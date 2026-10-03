@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>添加植物 · 植物养植助手</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav id="nav"></nav>
+<main>
+  <div class="head-row"><h1 id="title">添加植物</h1><a href="index.html">返回首页</a></div>
+  <form class="card form" id="form" novalidate>
+    <div>
+      <label class="field" for="name">1. 名字</label>
+      <input type="text" id="name" maxlength="12" placeholder="给它起个名字，比如 小绿" style="width:360px">
+      <p class="tip" id="name-err" role="alert"></p>
+    </div>
+    <div id="groups"></div>
+    <div class="btn-row"><button type="submit" class="btn btn-primary">保存</button><a class="btn" href="index.html">取消</a></div>
+  </form>
+</main>
+<script src="js/config.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/water.js"></script>
+<script src="js/ui.js"></script>
+<script>
+renderNav('home');
+const data = loadData();
+const p = getParams(data);
+const editing = getQuery('id') ? findPlant(data, getQuery('id')) : null;
+
+const plantOpts = {};
+for (const k in p.plants) plantOpts[k] = p.plants[k].name;
+const soilOpts = {};
+for (const k in p.soils) soilOpts[k] = p.soils[k].name;
+
+const groups = [
+  { key: 'species', title: '2. 品种', opts: plantOpts, def: 'pothos', tip: '选一种，程序会用这种植物的习性来计算' },
+  { key: 'soil', title: '3. 土壤', opts: soilOpts, def: 'garden', tip: '不知道的话选“普通园土”' },
+  { key: 'bright', title: '4. 每天明亮光照大约', opts: BRIGHT_OPTIONS, def: 'mid', tip: '' },
+  { key: 'sun', title: '5. 其中阳光直射大约', opts: SUN_OPTIONS, def: 'none', tip: '' },
+  { key: 'env', title: '6. 放在哪里', opts: ENV_OPTIONS, def: 'indoor', tip: '封闭阳台算室内；露天的植物下大雨时会自动加满水分' }
+];
+if (!editing) groups.push({ key: 'feel', title: '7. 现在土摸起来怎么样', opts: { wet: '还很湿', some: '有点干', dry: '很干' }, def: 'some', tip: '把手指插进土里2到3厘米感觉一下，程序从这里开始计算水分' });
+
+document.getElementById('groups').innerHTML = groups.map(g => {
+  const cur = editing && editing[g.key] ? editing[g.key] : g.def;
+  return '<fieldset style="margin-bottom:22px"><legend>' + g.title + '</legend><div class="choices">' +
+    Object.keys(g.opts).map(k => '<input type="radio" name="' + g.key + '" id="' + g.key + '-' + k + '" value="' + k + '"' + (k === cur ? ' checked' : '') + '>' +
+      '<label for="' + g.key + '-' + k + '">' + esc(g.opts[k]) + '</label>').join('') +
+    '</div>' + (g.tip ? '<p class="tip">' + g.tip + '</p>' : '') + '</fieldset>';
+}).join('');
+
+if (editing) {
+  document.getElementById('title').textContent = '修改植物';
+  document.title = '修改植物 · ' + APP_NAME;
+  document.getElementById('name').value = editing.name;
+}
+
+document.getElementById('name').addEventListener('input', () => { document.getElementById('name-err').textContent = ''; });
+
+document.getElementById('form').addEventListener('submit', e => {
+  e.preventDefault();
+  const name = document.getElementById('name').value.trim();
+  if (!name) {
+    document.getElementById('name-err').textContent = '请先给植物起个名字';
+    document.getElementById('name').focus();
+    return;
+  }
+  const val = k => document.querySelector('input[name="' + k + '"]:checked').value;
+  const fields = { name: name, species: val('species'), soil: val('soil'), bright: val('bright'), sun: val('sun'), env: val('env') };
+  let plant;
+  if (editing) {
+    plant = Object.assign(editing, fields);
+    addLog(plant, 'edit', '修改了植物信息');
+  } else {
+    plant = Object.assign(fields, { id: data.nextId++, balance: p.calib[val('feel')], lastUpdate: todayStr(), logs: [], history: [] });
+    addLog(plant, 'add', '添加了这盆植物');
+    addHistory(plant, todayStr(), plant.balance);
+    data.plants.push(plant);
+  }
+  saveData(data);
+  location.href = 'detail.html?id=' + plant.id;
+});
+</script>
+</body>
+</html>

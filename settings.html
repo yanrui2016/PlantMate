@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设置 · 植物养植助手</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav id="nav"></nav>
+<main>
+  <h1>设置</h1>
+
+  <section class="card" aria-labelledby="h-city">
+    <h2 id="h-city">我所在的城市</h2>
+    <div class="btn-row" style="align-items:center">
+      <select id="prov" aria-label="省份"></select>
+      <select id="city" aria-label="城市"></select>
+      <button class="btn btn-primary" id="save-city">保存城市</button>
+      <button class="btn" id="test-weather">测试天气连接</button>
+    </div>
+    <p class="tip" id="city-msg" role="status">程序用这个城市的天气来计算水分。天气数据来自 Open-Meteo。</p>
+  </section>
+
+  <section class="card" aria-labelledby="h-ai">
+    <h2 id="h-ai">AI 照片识别（智谱）</h2>
+    <div class="form" style="gap:14px">
+      <div><label class="field" for="key">智谱密钥</label>
+        <input type="password" id="key" style="width:420px" placeholder="在智谱开放平台注册后获取" autocomplete="off">
+        <p class="tip">密钥只保存在这台电脑的浏览器里，不会写进程序代码，导出备份时也不包含。</p></div>
+      <div><label class="field" for="model">模型</label><select id="model"></select></div>
+      <div class="btn-row"><button class="btn btn-primary" id="save-key">保存</button><button class="btn" id="test-ai">测试AI连接</button></div>
+      <p class="tip" id="ai-msg" role="status"></p>
+    </div>
+  </section>
+
+  <section class="card head-row" aria-labelledby="h-demo">
+    <div><h2 id="h-demo">演示模式</h2><p class="muted">打开后使用提前准备好的天气和识别结果，没有网络也能完整演示。</p></div>
+    <div class="choices"><input type="checkbox" id="demo"><label for="demo" id="demo-label">已关闭</label></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-backup">
+    <h2 id="h-backup">数据备份</h2>
+    <p class="muted">把所有植物和记录存成一个文件，换电脑或数据丢失时可以导入恢复。</p>
+    <div class="btn-row" style="margin-top:12px"><button class="btn" id="export">导出数据</button>
+      <label class="btn" for="import-file">导入数据</label><input type="file" id="import-file" accept=".json,application/json" class="hidden"></div>
+  </section>
+
+  <section class="card" id="advanced" aria-labelledby="h-adv">
+    <h2 id="h-adv">高级设置</h2>
+    <p class="muted">这里的数字会影响计算结果。测试时发现提醒得太早或太晚，就在这里调整，并记到迭代记录里。</p>
+    <h3 style="margin-top:18px">植物习性表</h3>
+    <div class="table-wrap"><table><thead><tr><th>植物</th><th>类型</th><th>植物系数</th><th>提醒线 %</th><th>最低温度 ℃</th><th>最高温度 ℃</th><th>光照需求</th><th>怕暴晒</th></tr></thead>
+      <tbody id="t-plants"></tbody></table></div>
+    <h3 style="margin-top:18px">土壤系数</h3><div class="btn-row" id="t-soils"></div>
+    <h3 style="margin-top:18px">天气和光照系数</h3><div id="t-k"></div>
+    <h3 style="margin-top:18px">每天基础消耗 %</h3><input type="number" step="0.5" id="base" aria-label="每天基础消耗">
+    <div class="btn-row" style="margin-top:20px"><button class="btn btn-primary" id="save-adv">保存参数</button><button class="btn" id="reset-adv">恢复初始值</button></div>
+    <p class="tip" id="adv-msg" role="status"></p>
+  </section>
+</main>
+<script src="js/config.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/demo.js"></script>
+<script src="js/weather.js"></script>
+<script src="js/cities.js"></script>
+<script src="js/vision.js"></script>
+<script src="js/ui.js"></script>
+<script>
+renderNav('settings');
+const $ = id => document.getElementById(id);
+let data = loadData();
+
+// ---------- 城市 ----------
+$('prov').innerHTML = '<option value="">选择省份</option>' + Object.keys(CITIES).map(p => '<option>' + p + '</option>').join('');
+function fillCities() {
+  const list = CITIES[$('prov').value] || [];
+  $('city').innerHTML = '<option value="">选择城市</option>' + list.map(c => '<option>' + c + '</option>').join('');
+}
+$('prov').onchange = fillCities;
+$('prov').value = data.settings.province || '';
+fillCities();
+$('city').value = data.settings.city || '';
+if (data.settings.city) $('city-msg').textContent = '当前城市：' + data.settings.province + ' ' + data.settings.city;
+
+$('save-city').onclick = async () => {
+  const prov = $('prov').value, city = $('city').value;
+  if (!prov || !city) { $('city-msg').textContent = '请先选择省份和城市。'; return; }
+  $('city-msg').textContent = '正在查找' + city + '的位置…';
+  data = loadData();
+  let note = '';
+  try {
+    const pos = await geocodeCity(prov, city);
+    data.settings.lat = pos.lat; data.settings.lon = pos.lon;
+  } catch (e) {
+    const c = CAPITAL_COORDS[prov];
+    data.settings.lat = c[0]; data.settings.lon = c[1];
+    note = '（没能查到准确位置，暂时使用省会的位置）';
+  }
+  data.settings.province = prov; data.settings.city = city;
+  data.weatherCache = null;
+  saveData(data);
+  $('city-msg').textContent = '已保存：' + prov + ' ' + city + note;
+};
+
+$('test-weather').onclick = async () => {
+  data = loadData();
+  if (data.settings.lat == null) { $('city-msg').textContent = '请先保存城市。'; return; }
+  $('city-msg').textContent = '正在连接天气服务…';
+  try {
+    const days = await fetchWeather(data.settings.lat, data.settings.lon, 2);
+    const w = days[todayStr()];
+    $('city-msg').textContent = '天气连接成功：今天平均' + Math.round(w.tmean) + '℃，湿度' + Math.round(w.hum) + '%，' + weatherDesc(w) + '。';
+  } catch (e) {
+    $('city-msg').textContent = '天气连接失败：' + (e.name === 'AbortError' ? '连接超时' : e.message) + '。水分会先按标准天气估算。';
+  }
+};
+
+// ---------- AI ----------
+$('model').innerHTML = Object.keys(AI_MODELS).map(k => '<option value="' + k + '">' + AI_MODELS[k] + '</option>').join('');
+$('model').value = data.settings.model;
+$('key').value = data.settings.apiKey;
+function saveKey() {
+  data = loadData();
+  data.settings.apiKey = $('key').value.trim();
+  data.settings.model = $('model').value;
+  saveData(data);
+}
+$('save-key').onclick = () => { saveKey(); $('ai-msg').textContent = '已保存。'; };
+$('test-ai').onclick = async () => {
+  saveKey();
+  if (!data.settings.apiKey) { $('ai-msg').textContent = '请先填写密钥。'; return; }
+  $('ai-msg').textContent = '正在连接智谱…';
+  try {
+    const ans = await testAI(data.settings.apiKey, data.settings.model);
+    $('ai-msg').textContent = 'AI连接成功，回复：' + String(ans).slice(0, 30);
+  } catch (e) { $('ai-msg').textContent = 'AI连接失败：' + e.message; }
+};
+
+// ---------- 演示模式 ----------
+function showDemo() { $('demo').checked = !!data.settings.demo; $('demo-label').textContent = data.settings.demo ? '已打开' : '已关闭'; }
+showDemo();
+$('demo').onchange = () => {
+  data = loadData(); data.settings.demo = $('demo').checked; data.weatherCache = null; saveData(data);
+  showDemo(); renderNav('settings'); toast(data.settings.demo ? '演示模式已打开' : '演示模式已关闭');
+};
+
+// ---------- 备份 ----------
+$('export').onclick = () => exportData(loadData());
+$('import-file').onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  importData(f, (ok, msg) => {
+    if (ok) { toast('导入成功'); setTimeout(() => location.reload(), 800); }
+    else toast(msg);
+  });
+};
+
+// ---------- 高级设置 ----------
+function num(id, v, step) { return '<input type="number" step="' + (step || 1) + '" id="' + id + '" value="' + v + '">'; }
+function renderAdv() {
+  const p = getParams(loadData());
+  $('t-plants').innerHTML = Object.keys(p.plants).map(k => {
+    const s = p.plants[k];
+    return '<tr><td>' + s.name + '</td><td>' + s.type + '</td><td>' + num('k-' + k, s.k, 0.05) + '</td><td>' + num('line-' + k, s.line) + '</td>' +
+      '<td>' + num('tmin-' + k, s.tmin) + '</td><td>' + num('tmax-' + k, s.tmax) + '</td><td>' + s.light + '</td><td>' + (s.noSun ? '是' : '否') + '</td></tr>';
+  }).join('');
+  $('t-soils').innerHTML = Object.keys(p.soils).map(k => '<label style="display:flex;gap:8px;align-items:center">' + p.soils[k].name + num('soil-' + k, p.soils[k].k, 0.05) + '</label>').join('');
+  const groups = [
+    ['tempK', '温度', { cold: '低于15℃', mild: '15–25℃', warm: '25–30℃', hot: '高于30℃' }],
+    ['humK', '湿度', { dry: '低于40%', normal: '40–70%', wet: '高于70%' }],
+    ['lightK', '光照', { dim: '明亮少于3小时无直射', bright: '明亮3小时以上无直射', sun1: '直射1到3小时', sun3: '直射3小时以上' }]
+  ];
+  $('t-k').innerHTML = groups.map(g => '<p style="margin:10px 0 6px">' + g[1] + '</p><div class="btn-row">' +
+    Object.keys(g[2]).map(k => '<label style="display:flex;gap:8px;align-items:center">' + g[2][k] + num(g[0] + '-' + k, p[g[0]][k], 0.05) + '</label>').join('') + '</div>').join('');
+  $('base').value = p.base;
+}
+renderAdv();
+
+$('save-adv').onclick = () => {
+  data = loadData();
+  const o = { plants: {}, soils: {}, tempK: {}, humK: {}, lightK: {} };
+  const v = id => parseFloat($(id).value);
+  let bad = false;
+  for (const k in DEFAULT_PARAMS.plants) {
+    o.plants[k] = { k: v('k-' + k), line: v('line-' + k), tmin: v('tmin-' + k), tmax: v('tmax-' + k) };
+    if (Object.values(o.plants[k]).some(isNaN)) bad = true;
+  }
+  for (const k in DEFAULT_PARAMS.soils) o.soils[k] = { k: v('soil-' + k) };
+  ['tempK', 'humK', 'lightK'].forEach(g => { for (const k in DEFAULT_PARAMS[g]) o[g][k] = v(g + '-' + k); });
+  o.base = v('base');
+  if (bad || isNaN(o.base)) { $('adv-msg').textContent = '有格子没填数字，请检查后再保存。'; return; }
+  data.overrides = o;
+  saveData(data);
+  $('adv-msg').textContent = '参数已保存，下次计算开始生效。';
+};
+$('reset-adv').onclick = async () => {
+  const ok = await dialog('恢复初始值？', '<p>你修改过的所有参数都会变回最初的数值。</p>', [{ text: '取消', value: false, primary: true }, { text: '恢复', value: true }]);
+  if (!ok) return;
+  data = loadData(); data.overrides = {}; saveData(data); renderAdv();
+  $('adv-msg').textContent = '已恢复初始值。';
+};
+</script>
+</body>
+</html>

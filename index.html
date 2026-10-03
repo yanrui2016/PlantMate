@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>首页 · 植物养植助手</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav id="nav"></nav>
+<main>
+  <div id="setup" class="card hidden"></div>
+  <div class="row">
+    <section class="card" id="weather" aria-label="今日天气"></section>
+    <section class="card wide" id="reminders" aria-label="今日提醒"></section>
+  </div>
+  <div class="head-row">
+    <h1>我的植物</h1>
+    <a class="btn btn-primary" href="add.html">+ 添加植物</a>
+  </div>
+  <div class="grid" id="plants"></div>
+</main>
+<script src="js/config.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/demo.js"></script>
+<script src="js/weather.js"></script>
+<script src="js/water.js"></script>
+<script src="js/update.js"></script>
+<script src="js/judge.js"></script>
+<script src="js/ui.js"></script>
+<script>
+renderNav('home');
+
+function renderWeather(data, info) {
+  const s = data.settings;
+  const w = todayWeather(data);
+  const box = document.getElementById('weather');
+  if (!w) {
+    box.innerHTML = '<h2>今日天气</h2><p class="muted">' + esc(info.error || '暂时没有天气数据') + '。水分先按标准天气估算。</p>';
+    return;
+  }
+  const days = data.weatherCache.days;
+  const t1 = days[addDays(todayStr(), 1)], t2 = days[addDays(todayStr(), 2)];
+  const city = s.demo ? '演示城市' : esc(s.city);
+  box.innerHTML = '<h2>今日天气 · ' + city + '</h2>' +
+    '<div class="weather-now">' + icon('sun', 48) + '<span class="temp">' + Math.round(w.tmean) + '℃</span>' +
+    '<span class="muted">' + weatherDesc(w) + '<br>湿度 ' + Math.round(w.hum) + '%</span></div>' +
+    (t1 ? '<span class="pill">明天 ' + Math.round(t1.tmin) + '–' + Math.round(t1.tmax) + '℃ ' + weatherDesc(t1) + '</span>' : '') +
+    (t2 ? '<span class="pill">后天 ' + Math.round(t2.tmin) + '–' + Math.round(t2.tmax) + '℃ ' + weatherDesc(t2) + '</span>' : '');
+}
+
+function renderReminders(data, info) {
+  const p = getParams(data);
+  const days = data.weatherCache ? data.weatherCache.days : null;
+  const items = [];
+  data.plants.forEach(pl => {
+    judgePlant(pl, recentObs(pl), p, days).forEach(a => {
+      if (a.level !== 'ok') items.push({ a: a, pl: pl });
+    });
+  });
+  items.sort((x, y) => LEVEL_ORDER[x.a.level] - LEVEL_ORDER[y.a.level]);
+  let note = '';
+  if (info.days > 0) note = '已根据过去' + info.days + '天的天气更新水分' + (info.missing ? '（部分天气数据缺失，结果为估计）' : '');
+  else if (data.plants.length) note = '今天的水分已经是最新的';
+  document.getElementById('reminders').innerHTML = '<h2>今日提醒（' + items.length + '条）</h2>' +
+    (items.length ? items.map(x => '<a class="reminder level-' + x.a.level + '" href="detail.html?id=' + x.pl.id + '"><b>' + esc(x.pl.name) + '</b><span>' + esc(x.a.title) + '</span></a>').join('')
+      : '<p>' + (data.plants.length ? '今天所有植物都很好。' : '添加植物后，这里会显示需要注意的事。') + '</p>') +
+    (note ? '<p class="muted" style="margin-top:10px">' + note + '</p>' : '');
+}
+
+function renderPlants(data) {
+  const p = getParams(data);
+  const days = data.weatherCache ? data.weatherCache.days : null;
+  const w = days ? days[todayStr()] : null;
+  const box = document.getElementById('plants');
+  if (!data.plants.length) {
+    box.innerHTML = '<div class="card empty" style="grid-column:1/-1"><p>还没有植物。点“添加植物”，给你的第一盆花建个档案吧。</p></div>';
+    return;
+  }
+  box.innerHTML = data.plants.map(pl => {
+    const st = waterStatus(pl, p);
+    return '<article class="card plant-card">' +
+      '<a class="btn icon-btn" href="diagnose.html?id=' + pl.id + '" aria-label="给' + esc(pl.name) + '拍照诊断">' + icon('camera', 22) + '</a>' +
+      '<a class="title" href="detail.html?id=' + pl.id + '"><span class="avatar">' + icon('leaf', 26) + '</span>' +
+      '<span><h3>' + esc(pl.name) + '</h3><span class="muted">' + esc(plantDesc(pl, p)) + '</span></span></a>' +
+      '<div class="bottom-line"><span>水分</span><b>' + Math.round(pl.balance) + '%</b></div>' + waterBar(pl, p) +
+      '<div class="bottom-line">' + statusChip(st) + '<span class="muted">' + daysText(daysToWater(pl, w, p)) + '</span></div></article>';
+  }).join('');
+}
+
+(async function () {
+  const data = loadData();
+  if (!data.settings.demo && data.settings.lat == null) {
+    const s = document.getElementById('setup');
+    s.classList.remove('hidden');
+    s.innerHTML = '<h2>第一步：选择你所在的城市</h2><p>程序要用当地的天气来计算水分。</p><p style="margin-top:12px"><a class="btn btn-primary" href="settings.html">去设置城市</a></p>';
+  }
+  renderPlants(data);
+  document.getElementById('weather').innerHTML = '<h2>今日天气</h2><p class="muted">正在获取天气…</p>';
+  document.getElementById('reminders').innerHTML = '<h2>今日提醒</h2><p class="muted">正在更新水分…</p>';
+  const info = await updateAll(data);
+  renderWeather(data, info);
+  renderReminders(data, info);
+  renderPlants(data);
+})();
+</script>
+</body>
+</html>

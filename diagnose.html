@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>拍照诊断 · 植物养植助手</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav id="nav"></nav>
+<main>
+  <div class="head-row"><h1 id="title">拍照诊断</h1><a id="back" href="index.html">返回</a></div>
+  <ol class="stepper" aria-label="诊断步骤">
+    <li id="s1" class="now">1 拍照</li><li id="s2">2 确认观察结果</li><li id="s3">3 查看建议</li>
+  </ol>
+
+  <section id="step1" class="row">
+    <div class="card"><h2>怎样拍得好</h2><ol class="steps" style="padding-left:22px;margin:0;line-height:2">
+      <li>白天，在自然光下拍</li><li>拍下整盆植物</li><li>要能看到土的表面</li><li>一次只拍一盆</li></ol>
+      <div id="demo-box" class="hidden" style="margin-top:16px"><label class="field" for="scene">演示场景</label><select id="scene"></select>
+      <p class="tip">演示模式不联网，按选择的场景给出识别结果。可以不传照片，直接用示意图。</p></div>
+    </div>
+    <div class="wide" style="display:flex;flex-direction:column;gap:14px">
+      <label class="upload" for="file" id="upload">
+        <span id="up-icon"></span><span id="up-text" style="font-size:20px">点这里拍照，或者选择一张照片</span>
+      </label>
+      <input type="file" id="file" accept="image/*" class="hidden">
+      <p class="tip" id="err1" role="alert"></p>
+      <div class="btn-row"><button class="btn btn-primary" id="go" disabled>开始识别</button></div>
+    </div>
+  </section>
+
+  <section id="step2" class="row hidden">
+    <div class="card" style="text-align:center"><img id="photo2" class="photo" alt="刚拍的植物照片">
+      <p style="margin-top:12px"><button class="btn" id="retake">重新拍照</button></p></div>
+    <div class="card wide"><h2>AI 看到的结果</h2>
+      <p class="muted">选中的是 AI 的判断。如果你觉得不对，点别的选项改过来。</p>
+      <p class="tip" id="fixed-note"></p>
+      <div id="obs"></div>
+      <div class="btn-row" style="margin-top:16px"><button class="btn btn-primary" id="confirm">确认，看建议</button></div>
+    </div>
+  </section>
+
+  <section id="step3" class="hidden" style="display:flex;flex-direction:column;gap:20px">
+    <div class="card" id="result"></div>
+    <div class="row">
+      <div class="card"><h2>为什么这样判断</h2><div id="why"></div></div>
+      <div class="card"><h2>其他检查</h2><div id="others"></div></div>
+    </div>
+    <div class="btn-row"><button class="btn btn-primary" id="save">保存到记录</button><button class="btn" id="again">再拍一张</button></div>
+  </section>
+</main>
+<script src="js/config.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/demo.js"></script>
+<script src="js/weather.js"></script>
+<script src="js/water.js"></script>
+<script src="js/update.js"></script>
+<script src="js/judge.js"></script>
+<script src="js/vision.js"></script>
+<script src="js/ui.js"></script>
+<script>
+renderNav('home');
+let data = loadData();
+const plant = findPlant(data, getQuery('id'));
+const $ = id => document.getElementById(id);
+let photo = null, userPhoto = false, aiObs = null, finalObs = null, advice = null;
+
+if (!plant) {
+  document.querySelector('main').innerHTML = '<div class="card empty"><p>请从首页选择一盆植物再拍照诊断。</p><p><a href="index.html">返回首页</a></p></div>';
+} else {
+  const p0 = getParams(data);
+  $('title').textContent = '拍照诊断 · ' + plant.name + '（' + p0.plants[plant.species].name + '）';
+  $('back').href = 'detail.html?id=' + plant.id;
+  $('back').textContent = '返回' + plant.name;
+  $('up-icon').innerHTML = icon('camera', 64);
+  if (data.settings.demo) {
+    $('demo-box').classList.remove('hidden');
+    $('scene').innerHTML = Object.keys(DEMO_SCENES).map(k => '<option value="' + k + '">' + DEMO_SCENES[k].name + '</option>').join('');
+    $('go').disabled = false;
+  }
+  updateAll(data);
+}
+
+function showStep(n) {
+  [1, 2, 3].forEach(i => {
+    $('step' + i).classList.toggle('hidden', i !== n);
+    $('s' + i).classList.toggle('now', i === n);
+  });
+  window.scrollTo(0, 0);
+}
+
+$('file').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try {
+    photo = await compressImage(f);
+    userPhoto = true;
+    $('upload').innerHTML = '<img src="' + photo + '" alt="选好的照片"><span class="muted">点图片可以换一张</span>';
+    $('go').disabled = false;
+    $('err1').textContent = '';
+  } catch (err) { $('err1').textContent = err.message; }
+});
+
+$('go').addEventListener('click', async () => {
+  const btn = $('go');
+  btn.disabled = true; btn.textContent = 'AI 正在看…';
+  $('err1').textContent = '';
+  try {
+    let result;
+    if (data.settings.demo) {
+      const scene = $('scene').value;
+      if (!userPhoto) photo = demoPicture(scene);
+      result = { obs: await demoVision(scene), fixed: [] };
+    } else {
+      result = await analyzePhoto(photo, getParams(data).plants[plant.species].name, data.settings);
+    }
+    aiObs = result.obs;
+    $('fixed-note').textContent = result.fixed.length ? '有' + result.fixed.length + '项 AI 没有按要求回答，已改为“看不清”：' + result.fixed.join('、') : '';
+    renderObs();
+    $('photo2').src = photo;
+    showStep(2);
+  } catch (err) {
+    $('err1').textContent = err.message;
+  }
+  btn.disabled = false; btn.textContent = '开始识别';
+});
+
+function renderObs() {
+  $('obs').innerHTML = OBS_ITEMS.map(it => '<fieldset class="obs-row"><legend class="name" style="float:left;margin:0">' + it.name + '</legend><div class="choices">' +
+    it.opts.map((o, i) => '<input type="radio" name="o-' + it.key + '" id="o-' + it.key + i + '" value="' + o + '"' + (aiObs[it.key] === o ? ' checked' : '') + '>' +
+      '<label for="o-' + it.key + i + '">' + o + '</label>').join('') + '</div></fieldset>').join('');
+}
+
+$('retake').addEventListener('click', () => showStep(1));
+$('again').addEventListener('click', () => showStep(1));
+
+$('confirm').addEventListener('click', () => {
+  finalObs = {};
+  OBS_ITEMS.forEach(it => { finalObs[it.key] = document.querySelector('input[name="o-' + it.key + '"]:checked').value; });
+  data = loadData();
+  const pl = findPlant(data, plant.id);
+  const p = getParams(data);
+  const days = data.weatherCache ? data.weatherCache.days : null;
+  advice = judgePlant(pl, finalObs, p, days);
+  const main = advice[0];
+  $('result').className = 'card';
+  $('result').innerHTML = '<p class="muted">诊断结论</p>' + adviceHtml(main, false);
+  const lv = waterStatus(pl, p);
+  const symText = symptomOf(finalObs) === 'sick' ? '叶子有点蔫或发黄' : (symptomOf(finalObs) === 'none' ? '叶子看起来正常' : '叶子看不清');
+  $('why').innerHTML = finalObs.quality !== '清晰' ? '<p>照片质量不好，没法判断。</p>' :
+    '<div class="why"><span class="chip-status st-' + lv.code + '">水分 ' + Math.round(pl.balance) + '%（' + lv.text + '）</span><span>+</span><span class="chip-status st-ok">' + symText + '</span></div>' +
+    '<p style="margin-top:10px">' + esc(main.detail) + '</p><p class="rule muted" style="margin-top:8px">用到的规则：' + esc(main.rule) + '</p>';
+  const rest = advice.slice(1);
+  $('others').innerHTML = rest.length ? rest.map(a => adviceHtml(a, true)).join('') : '<p>没有发现病虫害、光照和温度方面的问题。</p>';
+  showStep(3);
+});
+
+$('save').addEventListener('click', () => {
+  data = loadData();
+  const pl = findPlant(data, plant.id);
+  const changed = OBS_ITEMS.filter(it => aiObs[it.key] !== finalObs[it.key]).length;
+  const brief = '叶片' + finalObs.leaf + '，萎蔫' + finalObs.wilt;
+  pl.lastDiag = { date: todayStr(), obs: finalObs, aiObs: aiObs, title: advice[0].title };
+  addLog(pl, 'diag', '拍照诊断：' + brief + ' → ' + advice[0].title + (changed ? '（改了' + changed + '项AI结果）' : ''));
+  saveData(data);
+  toast('已保存到记录');
+  setTimeout(() => { location.href = 'detail.html?id=' + pl.id; }, 600);
+});
+</script>
+</body>
+</html>
