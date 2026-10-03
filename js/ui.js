@@ -85,6 +85,29 @@ function statusChip(st) {
   return '<span class="chip-status st-' + st.code + '">' + st.text + '</span>';
 }
 
+// 植物头像：有照片就显示照片，没有就显示小嫩芽
+function avatarHtml(plant, size) {
+  const s = size || 48;
+  if (plant.photo) return '<img class="avatar" src="' + plant.photo + '" alt="" width="' + s + '" height="' + s + '" style="width:' + s + 'px;height:' + s + 'px;object-fit:cover">';
+  return '<span class="avatar" style="width:' + s + 'px;height:' + s + 'px">' + icon('leaf', Math.round(s * 0.55)) + '</span>';
+}
+
+// 把照片做成正方形小图（边长240像素），存进浏览器占用空间很小
+function makeThumb(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.width, img.height);
+      const c = document.createElement('canvas');
+      c.width = c.height = 240;
+      c.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 240, 240);
+      resolve(c.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = () => reject(new Error('这个文件不是图片'));
+    img.src = src;
+  });
+}
+
 function plantDesc(plant, p) {
   return p.plants[plant.species].name + '，' + ENV_OPTIONS[plant.env] + '，' + p.soils[plant.soil].name;
 }

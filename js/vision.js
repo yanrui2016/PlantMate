@@ -20,22 +20,24 @@ function compressImage(file) {
 }
 
 // 第一道保险：提示词
-function buildPrompt(plantName) {
-  const lines = OBS_ITEMS.map(it => '"' + it.name + '"：' + it.opts.join(' / '));
-  return '你是一位植物观察员。这是一盆' + plantName + '的照片。请仔细观察，只按下面的格式回答，' +
+function obsItems(hydro) { return hydro ? OBS_ITEMS.filter(it => it.key !== 'soil') : OBS_ITEMS; }
+
+function buildPrompt(plantName, hydro) {
+  const lines = obsItems(hydro).map(it => '"' + it.name + '"：' + it.opts.join(' / '));
+  return '你是一位植物观察员。这是一盆' + (hydro ? '水培的' : '') + plantName + '的照片。请仔细观察，只按下面的格式回答，' +
     '每一项只能从给出的选项中选择一个，看不清楚就选"看不清"。不要给出任何养护建议，不要写其他文字。\n' +
     '观察项和选项：\n' + lines.join('\n') + '\n' +
-    '只输出一个JSON对象，例如：{"照片质量":"清晰","叶片颜色":"正常","萎蔫":"无","叶尖焦枯":"无","斑点或虫子":"无","徒长":"无","土壤表面":"干"}';
+    '只输出一个JSON对象，例如：{"照片质量":"清晰","叶片颜色":"正常","萎蔫":"无","叶尖焦枯":"无","斑点或虫子":"无","徒长":"无"' + (hydro ? '' : ',"土壤表面":"干"') + '}';
 }
 
 // 第二道保险：逐项检查AI的答案
-function checkAnswer(text) {
+function checkAnswer(text, hydro) {
   const m = String(text || '').match(/\{[\s\S]*\}/);
   if (!m) return null;                  // 完全读不懂
   let raw;
   try { raw = JSON.parse(m[0]); } catch (e) { return null; }
-  const obs = {}, fixed = [];
-  OBS_ITEMS.forEach(it => {
+  const obs = { soil: '看不清' }, fixed = [];   // 水培没有土，土壤表面固定为“看不清”
+  obsItems(hydro).forEach(it => {
     const v = typeof raw[it.name] === 'string' ? raw[it.name].trim() : '';
     if (it.opts.indexOf(v) >= 0) obs[it.key] = v;
     else {
@@ -65,9 +67,9 @@ async function callZhipu(apiKey, model, content) {
 }
 
 // 识别一张照片，返回 { obs, fixed }
-async function analyzePhoto(dataUrl, plantName, settings) {
+async function analyzePhoto(dataUrl, plantName, settings, hydro) {
   if (!settings.apiKey) throw new Error('还没有填写智谱密钥，请到设置页填写');
-  const text = { type: 'text', text: buildPrompt(plantName) };
+  const text = { type: 'text', text: buildPrompt(plantName, hydro) };
   const pure = dataUrl.split(',')[1];
   // 先用完整的图片地址；如果接口不接受，再试只传 Base64
   const tries = [dataUrl, pure, dataUrl];
@@ -75,7 +77,7 @@ async function analyzePhoto(dataUrl, plantName, settings) {
   for (const img of tries) {
     try {
       const answer = await callZhipu(settings.apiKey, settings.model, [{ type: 'image_url', image_url: { url: img } }, text]);
-      const checked = checkAnswer(answer);
+      const checked = checkAnswer(answer, hydro);
       if (checked) return checked;
       lastErr = new Error('AI的回答格式不对');
     } catch (e) {

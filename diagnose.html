@@ -47,7 +47,7 @@
       <div class="card"><h2>为什么这样判断</h2><div id="why"></div></div>
       <div class="card"><h2>其他检查</h2><div id="others"></div></div>
     </div>
-    <div class="btn-row"><button class="btn btn-primary" id="save">保存到记录</button><button class="btn" id="again">再拍一张</button></div>
+    <div class="btn-row"><button class="btn btn-primary" id="save">保存到记录</button><button class="btn" id="again">再拍一张</button><button class="btn" id="set-photo">设为植物照片</button></div>
   </section>
 </main>
 <script src="js/config.js"></script>
@@ -64,12 +64,13 @@ renderNav('home');
 let data = loadData();
 const plant = findPlant(data, getQuery('id'));
 const $ = id => document.getElementById(id);
-let photo = null, userPhoto = false, aiObs = null, finalObs = null, advice = null;
+let hydro = false, photo = null, userPhoto = false, aiObs = null, finalObs = null, advice = null;
 
 if (!plant) {
   document.querySelector('main').innerHTML = '<div class="card empty"><p>请从首页选择一盆植物再拍照诊断。</p><p><a href="index.html">返回首页</a></p></div>';
 } else {
   const p0 = getParams(data);
+  hydro = isHydro(plant, p0);
   $('title').textContent = '拍照诊断 · ' + plant.name + '（' + p0.plants[plant.species].name + '）';
   $('back').href = 'detail.html?id=' + plant.id;
   $('back').textContent = '返回' + plant.name;
@@ -112,8 +113,9 @@ $('go').addEventListener('click', async () => {
       const scene = $('scene').value;
       if (!userPhoto) photo = demoPicture(scene);
       result = { obs: await demoVision(scene), fixed: [] };
+      if (hydro) result.obs.soil = '看不清';
     } else {
-      result = await analyzePhoto(photo, getParams(data).plants[plant.species].name, data.settings);
+      result = await analyzePhoto(photo, getParams(data).plants[plant.species].name, data.settings, hydro);
     }
     aiObs = result.obs;
     $('fixed-note').textContent = result.fixed.length ? '有' + result.fixed.length + '项 AI 没有按要求回答，已改为“看不清”：' + result.fixed.join('、') : '';
@@ -127,7 +129,7 @@ $('go').addEventListener('click', async () => {
 });
 
 function renderObs() {
-  $('obs').innerHTML = OBS_ITEMS.map(it => '<fieldset class="obs-row"><legend class="name" style="float:left;margin:0">' + it.name + '</legend><div class="choices">' +
+  $('obs').innerHTML = obsItems(hydro).map(it => '<fieldset class="obs-row"><legend class="name" style="float:left;margin:0">' + it.name + '</legend><div class="choices">' +
     it.opts.map((o, i) => '<input type="radio" name="o-' + it.key + '" id="o-' + it.key + i + '" value="' + o + '"' + (aiObs[it.key] === o ? ' checked' : '') + '>' +
       '<label for="o-' + it.key + i + '">' + o + '</label>').join('') + '</div></fieldset>').join('');
 }
@@ -136,8 +138,8 @@ $('retake').addEventListener('click', () => showStep(1));
 $('again').addEventListener('click', () => showStep(1));
 
 $('confirm').addEventListener('click', () => {
-  finalObs = {};
-  OBS_ITEMS.forEach(it => { finalObs[it.key] = document.querySelector('input[name="o-' + it.key + '"]:checked').value; });
+  finalObs = { soil: '看不清' };
+  obsItems(hydro).forEach(it => { finalObs[it.key] = document.querySelector('input[name="o-' + it.key + '"]:checked').value; });
   data = loadData();
   const pl = findPlant(data, plant.id);
   const p = getParams(data);
@@ -149,11 +151,20 @@ $('confirm').addEventListener('click', () => {
   const lv = waterStatus(pl, p);
   const symText = symptomOf(finalObs) === 'sick' ? '叶子有点蔫或发黄' : (symptomOf(finalObs) === 'none' ? '叶子看起来正常' : '叶子看不清');
   $('why').innerHTML = finalObs.quality !== '清晰' ? '<p>照片质量不好，没法判断。</p>' :
-    '<div class="why"><span class="chip-status st-' + lv.code + '">水分 ' + Math.round(pl.balance) + '%（' + lv.text + '）</span><span>+</span><span class="chip-status st-ok">' + symText + '</span></div>' +
+    '<div class="why"><span class="chip-status st-' + lv.code + '">水分 ' + Math.round(pl.balance) + '%（' + lv.text + '）</span><span>+</span><span class="chip-status st-ok">' + symText + '</span>' +
+    (finalObs.soil === '干' || finalObs.soil === '很干' ? '<span>+</span><span class="chip-status st-low">土表' + finalObs.soil + '（已确认）</span>' : '') + '</div>' +
     '<p style="margin-top:10px">' + esc(main.detail) + '</p><p class="rule muted" style="margin-top:8px">用到的规则：' + esc(main.rule) + '</p>';
   const rest = advice.slice(1);
   $('others').innerHTML = rest.length ? rest.map(a => adviceHtml(a, true)).join('') : '<p>没有发现病虫害、光照和温度方面的问题。</p>';
   showStep(3);
+});
+
+$('set-photo').addEventListener('click', async () => {
+  data = loadData();
+  const pl = findPlant(data, plant.id);
+  pl.photo = await makeThumb(photo);
+  saveData(data);
+  toast('已设为' + pl.name + '的照片');
 });
 
 $('save').addEventListener('click', () => {

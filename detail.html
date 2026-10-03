@@ -46,32 +46,43 @@ function render() {
   document.title = plant.name + ' · ' + APP_NAME;
   const p = getParams(data);
   const sp = p.plants[plant.species];
+  if (!sp) { main.innerHTML = '<div class="card empty"><p>这盆植物的品种已被删除，请到“修改”里重新选择品种。</p><p><a href="add.html?id=' + plant.id + '">去修改</a></p></div>'; return; }
   const days = data.weatherCache ? data.weatherCache.days : null;
   const w = days ? days[todayStr()] : null;
   const obs = recentObs(plant);
   const advice = judgePlant(plant, obs, p, days);
   const st = waterStatus(plant, p);
+  const hydro = isHydro(plant, p);
 
   main.innerHTML =
-    '<div class="head-row"><div style="display:flex;align-items:center;gap:14px"><span class="avatar">' + icon('leaf', 28) + '</span>' +
+    '<div class="head-row"><div style="display:flex;align-items:center;gap:14px">' + avatarHtml(plant, 64) + '' +
     '<div><h1>' + esc(plant.name) + '</h1><p class="muted">' + esc(plantDesc(plant, p)) + '，明亮光照' + BRIGHT_OPTIONS[plant.bright] + '，直射' + SUN_OPTIONS[plant.sun] + '</p></div></div>' +
     '<div class="btn-row"><a href="add.html?id=' + plant.id + '">修改</a><a href="#" id="del">删除</a><a href="index.html">返回首页</a></div></div>' +
 
-    '<div class="row"><section class="card" aria-label="水分"><h2 style="display:flex;gap:8px;align-items:center;color:var(--water)">' + icon('drop') + '水分余额</h2>' +
-    '<div class="big-num">' + Math.round(plant.balance) + '%</div><div style="margin:14px 0 8px">' + waterBar(plant, p, true) + '</div>' +
-    '<p class="muted">橙色竖线是提醒线：' + sp.line + '%</p><p style="margin-top:8px">' + statusChip(st) + ' <span class="muted">' + daysText(daysToWater(plant, w, p)) + '</span></p></section>' +
+    '<div class="row">' + (hydro
+      ? '<section class="card" aria-label="换水"><h2 style="display:flex;gap:8px;align-items:center;color:var(--water)">' + icon('drop') + '水培换水</h2>' +
+        '<div class="big-num">' + daysSinceChange(plant) + '<span style="font-size:24px">天</span></div><p class="muted" style="margin-top:8px">距上次换水。建议每' + p.hydroDays + '天换一次水。</p>' +
+        '<p style="margin-top:8px">' + statusChip(st) + ' <span class="muted">' + nextText(plant, w, p) + '</span></p></section>'
+      : '<section class="card" aria-label="水分"><h2 style="display:flex;gap:8px;align-items:center;color:var(--water)">' + icon('drop') + '水分余额</h2>' +
+        '<div class="big-num">' + Math.round(plant.balance) + '%</div><div style="margin:14px 0 8px">' + waterBar(plant, p, true) + '</div>' +
+        '<p class="muted">橙色竖线是提醒线：' + sp.line + '%</p><p style="margin-top:8px">' + statusChip(st) + ' <span class="muted">' + nextText(plant, w, p) + '</span></p></section>') +
     '<section class="card wide" aria-label="现在的建议"><h2>现在的建议</h2>' + advice.map(a => adviceHtml(a, false)).join('') +
     (obs ? '<p class="muted" style="margin-top:10px">参考了' + shortDate(plant.lastDiag.date) + '的拍照诊断</p>' : '') + '</section></div>' +
 
-    '<div class="btn-row"><button class="btn btn-primary" id="b-full">' + icon('drop') + '我浇透了</button>' +
-    '<button class="btn" id="b-little">浇了一点</button>' +
-    '<button class="btn" id="b-feel">' + icon('hand') + '我摸了一下土</button>' +
+    '<div class="btn-row">' + (hydro
+      ? '<button class="btn btn-primary" id="b-change">' + icon('drop') + '我换水了</button><button class="btn" id="b-add">加了点水</button>'
+      : '<button class="btn btn-primary" id="b-full">' + icon('drop') + '我浇透了</button><button class="btn" id="b-little">浇了一点</button>' +
+        '<button class="btn" id="b-feel">' + icon('hand') + '我摸了一下土</button>') +
     '<a class="btn" href="diagnose.html?id=' + plant.id + '">' + icon('camera') + '拍照诊断</a></div>' +
 
-    '<div class="row"><section class="card wide chart"><h2>最近两周的水分变化</h2>' + chartSvg(plant, sp.line) + '<p class="muted">每次往上跳就是一次浇水或校正</p></section>' +
+    '<div class="row">' + (hydro ? '' : '<section class="card wide chart"><h2>最近两周的水分变化</h2>' + chartSvg(plant, sp.line) + '<p class="muted">每次往上跳就是一次浇水或校正</p></section>') +
     '<section class="card"><h2>记录</h2><ul class="logs">' +
     (plant.logs || []).slice(0, 12).map(l => '<li><span>' + shortDate(l.date) + '</span><span>' + esc(l.text) + '</span></li>').join('') + '</ul></section></div>';
 
+  if (hydro) {
+    document.getElementById('b-change').onclick = () => { changeWater(plant); saveData(data); toast('已记录：换水'); render(); };
+    document.getElementById('b-add').onclick = () => { addWaterHydro(plant); saveData(data); toast('已记录：加了点水'); render(); };
+  } else {
   document.getElementById('b-full').onclick = async () => {
     if (plant.balance >= p.fullLine) {
       const go = await dialog('土还很湿，确定要浇吗？', '<p>' + esc(plant.name) + '现在的水分是' + Math.round(plant.balance) + '%，已经超过' + p.fullLine + '%。浇水太多，根可能会烂掉。</p>',
@@ -87,6 +98,7 @@ function render() {
     if (!feel) return;
     calibrate(plant, feel, p); saveData(data); toast('水分已校正'); render();
   };
+  }
   document.getElementById('del').onclick = async e => {
     e.preventDefault();
     const ok = await dialog('删除' + plant.name + '？', '<p>它的所有记录都会被删除，不能恢复。</p>', [{ text: '取消', value: false, primary: true }, { text: '删除', value: true }]);

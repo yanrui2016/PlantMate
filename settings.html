@@ -50,9 +50,24 @@
     <h2 id="h-adv">高级设置</h2>
     <p class="muted">这里的数字会影响计算结果。测试时发现提醒得太早或太晚，就在这里调整，并记到迭代记录里。</p>
     <h3 style="margin-top:18px">植物习性表</h3>
-    <div class="table-wrap"><table><thead><tr><th>植物</th><th>类型</th><th>植物系数</th><th>提醒线 %</th><th>最低温度 ℃</th><th>最高温度 ℃</th><th>光照需求</th><th>怕暴晒</th></tr></thead>
+    <div class="table-wrap"><table><thead><tr><th>植物</th><th>类型</th><th>植物系数</th><th>提醒线 %</th><th>最低温度 ℃</th><th>最高温度 ℃</th><th>光照需求</th><th>怕暴晒</th><th></th></tr></thead>
       <tbody id="t-plants"></tbody></table></div>
+    <details class="card" style="margin-top:14px;box-shadow:none"><summary style="cursor:pointer;font-weight:700">添加新品种</summary>
+      <div class="form" style="gap:14px;margin-top:14px">
+        <div><label class="field" for="n-name">名字</label><input type="text" id="n-name" maxlength="10" placeholder="比如 茉莉"></div>
+        <div class="btn-row">
+          <label>类型 <select id="n-type"><option>喜湿</option><option selected>中等</option><option>耐旱</option></select></label>
+          <label>最低温度 ℃ <input type="number" id="n-tmin" value="15"></label>
+          <label>最高温度 ℃ <input type="number" id="n-tmax" value="30"></label>
+          <label>光照需求 <select id="n-light"></select></label>
+          <label><input type="checkbox" id="n-nosun"> 怕暴晒</label>
+        </div>
+        <p class="tip">植物系数和提醒线会按类型自动填好（喜湿 1.2 / 50%，中等 1.0 / 40%，耐旱 0.6 / 15%），添加后可以在上面的表里修改。请记下查到的资料来源。</p>
+        <div><button class="btn btn-primary" id="n-add">添加这个品种</button> <span class="tip" id="n-msg" role="status"></span></div>
+      </div>
+    </details>
     <h3 style="margin-top:18px">土壤系数</h3><div class="btn-row" id="t-soils"></div>
+    <h3 style="margin-top:18px">水培换水间隔（天）</h3><input type="number" id="hydro-days" aria-label="水培换水间隔">
     <h3 style="margin-top:18px">天气和光照系数</h3><div id="t-k"></div>
     <h3 style="margin-top:18px">每天基础消耗 %</h3><input type="number" step="0.5" id="base" aria-label="每天基础消耗">
     <div class="btn-row" style="margin-top:20px"><button class="btn btn-primary" id="save-adv">保存参数</button><button class="btn" id="reset-adv">恢复初始值</button></div>
@@ -162,10 +177,13 @@ function renderAdv() {
   const p = getParams(loadData());
   $('t-plants').innerHTML = Object.keys(p.plants).map(k => {
     const s = p.plants[k];
-    return '<tr><td>' + s.name + '</td><td>' + s.type + '</td><td>' + num('k-' + k, s.k, 0.05) + '</td><td>' + num('line-' + k, s.line) + '</td>' +
-      '<td>' + num('tmin-' + k, s.tmin) + '</td><td>' + num('tmax-' + k, s.tmax) + '</td><td>' + s.light + '</td><td>' + (s.noSun ? '是' : '否') + '</td></tr>';
+    return '<tr><td>' + esc(s.name) + (s.custom ? '<br><span class="tip">自己添加</span>' : '') + '</td><td>' + s.type + '</td><td>' + num('k-' + k, s.k, 0.05) + '</td><td>' + num('line-' + k, s.line) + '</td>' +
+      '<td>' + num('tmin-' + k, s.tmin) + '</td><td>' + num('tmax-' + k, s.tmax) + '</td><td>' + s.light + '</td><td>' + (s.noSun ? '是' : '否') + '</td>' +
+      '<td>' + (s.custom ? '<button class="btn" data-del="' + k + '" style="min-height:36px;padding:4px 12px">删除</button>' : '') + '</td></tr>';
   }).join('');
-  $('t-soils').innerHTML = Object.keys(p.soils).map(k => '<label style="display:flex;gap:8px;align-items:center">' + p.soils[k].name + num('soil-' + k, p.soils[k].k, 0.05) + '</label>').join('');
+  document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteSpecies(b.dataset.del));
+  $('hydro-days').value = p.hydroDays;
+  $('t-soils').innerHTML = Object.keys(p.soils).filter(k => !p.soils[k].hydro).map(k => '<label style="display:flex;gap:8px;align-items:center">' + p.soils[k].name + num('soil-' + k, p.soils[k].k, 0.05) + '</label>').join('');
   const groups = [
     ['tempK', '温度', { cold: '低于15℃', mild: '15–25℃', warm: '25–30℃', hot: '高于30℃' }],
     ['humK', '湿度', { dry: '低于40%', normal: '40–70%', wet: '高于70%' }],
@@ -177,25 +195,64 @@ function renderAdv() {
 }
 renderAdv();
 
+// ---------- 添加和删除品种 ----------
+$('n-light').innerHTML = LIGHT_NEEDS.map(l => '<option>' + l + '</option>').join('');
+$('n-add').onclick = () => {
+  data = loadData();
+  const name = $('n-name').value.trim();
+  const tmin = parseFloat($('n-tmin').value), tmax = parseFloat($('n-tmax').value);
+  const exists = Object.values(getParams(data).plants).some(x => x.name === name);
+  if (!name) { $('n-msg').textContent = '请先填写名字。'; return; }
+  if (exists) { $('n-msg').textContent = '已经有“' + name + '”这个品种了。'; return; }
+  if (isNaN(tmin) || isNaN(tmax) || tmin >= tmax) { $('n-msg').textContent = '请检查温度：最低温度要比最高温度低。'; return; }
+  const type = $('n-type').value;
+  data.customPlants['c' + Date.now()] = { name: name, type: type, k: TYPE_DEFAULTS[type].k, line: TYPE_DEFAULTS[type].line,
+    tmin: tmin, tmax: tmax, light: $('n-light').value, noSun: $('n-nosun').checked };
+  saveData(data);
+  $('n-name').value = '';
+  $('n-msg').textContent = '已添加“' + name + '”，添加植物时就能选到它。';
+  renderAdv();
+};
+async function deleteSpecies(id) {
+  data = loadData();
+  const sp = data.customPlants[id];
+  const users = data.plants.filter(pl => pl.species === id).map(pl => pl.name);
+  if (users.length) { toast('“' + sp.name + '”正在被' + users.join('、') + '使用，不能删除'); return; }
+  const ok = await dialog('删除品种“' + sp.name + '”？', '<p>删除后添加植物时就选不到它了。</p>', [{ text: '取消', value: false, primary: true }, { text: '删除', value: true }]);
+  if (!ok) return;
+  delete data.customPlants[id];
+  saveData(data);
+  renderAdv();
+}
+
 $('save-adv').onclick = () => {
   data = loadData();
   const o = { plants: {}, soils: {}, tempK: {}, humK: {}, lightK: {} };
   const v = id => parseFloat($(id).value);
   let bad = false;
+  const row = k => ({ k: v('k-' + k), line: v('line-' + k), tmin: v('tmin-' + k), tmax: v('tmax-' + k) });
   for (const k in DEFAULT_PARAMS.plants) {
-    o.plants[k] = { k: v('k-' + k), line: v('line-' + k), tmin: v('tmin-' + k), tmax: v('tmax-' + k) };
+    o.plants[k] = row(k);
     if (Object.values(o.plants[k]).some(isNaN)) bad = true;
   }
-  for (const k in DEFAULT_PARAMS.soils) o.soils[k] = { k: v('soil-' + k) };
+  const custom = {};
+  for (const k in data.customPlants) {
+    const r = row(k);
+    if (Object.values(r).some(isNaN)) bad = true;
+    custom[k] = Object.assign({}, data.customPlants[k], r);
+  }
+  for (const k in DEFAULT_PARAMS.soils) if (!DEFAULT_PARAMS.soils[k].hydro) o.soils[k] = { k: v('soil-' + k) };
+  o.hydroDays = v('hydro-days');
   ['tempK', 'humK', 'lightK'].forEach(g => { for (const k in DEFAULT_PARAMS[g]) o[g][k] = v(g + '-' + k); });
   o.base = v('base');
-  if (bad || isNaN(o.base)) { $('adv-msg').textContent = '有格子没填数字，请检查后再保存。'; return; }
+  if (bad || isNaN(o.base) || isNaN(o.hydroDays)) { $('adv-msg').textContent = '有格子没填数字，请检查后再保存。'; return; }
   data.overrides = o;
+  data.customPlants = custom;
   saveData(data);
   $('adv-msg').textContent = '参数已保存，下次计算开始生效。';
 };
 $('reset-adv').onclick = async () => {
-  const ok = await dialog('恢复初始值？', '<p>你修改过的所有参数都会变回最初的数值。</p>', [{ text: '取消', value: false, primary: true }, { text: '恢复', value: true }]);
+  const ok = await dialog('恢复初始值？', '<p>你修改过的所有参数都会变回最初的数值。自己添加的品种会保留。</p>', [{ text: '取消', value: false, primary: true }, { text: '恢复', value: true }]);
   if (!ok) return;
   data = loadData(); data.overrides = {}; saveData(data); renderAdv();
   $('adv-msg').textContent = '已恢复初始值。';

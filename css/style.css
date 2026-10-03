@@ -70,7 +70,7 @@ nav#nav { margin: 24px auto 26px; width: calc(100% - 48px); display: flex; flex-
 .plant-card .icon-btn { position: absolute; top: 14px; right: 14px; }
 .plant-card a.title { color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 12px; padding-right: 50px; }
 .plant-card a.title:hover h3 { text-decoration: underline; }
-.avatar { width: 48px; height: 48px; flex: none; border-radius: 50%; background: var(--soft); color: var(--soft-text); display: flex; align-items: center; justify-content: center; }
+.avatar { width: 48px; height: 48px; flex: none; border-radius: 50%; border: 2px solid var(--line); background: var(--soft); color: var(--soft-text); display: flex; align-items: center; justify-content: center; }
 .bottom-line { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; }
 
 /* 水分条 */
@@ -154,3 +154,5 @@ th { color: var(--muted); font-weight: 400; }
   .big-num { font-size: 48px; }
 }
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
+
+.photo-pick { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }

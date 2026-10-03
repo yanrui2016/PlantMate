@@ -9,6 +9,7 @@ const DEFAULT_PARAMS = {
   rainMM: 5,         // 露天植物：当天降雨超过这个毫米数，水分加满
   littleWater: 30,   // “浇了一点”增加的水分（%）
   maxGapDays: 30,    // 超过这么多天没打开，就不补算，请用户测土
+  hydroDays: 7,      // 水培植物建议几天换一次水
   calib: { wet: 70, some: 40, dry: 10 },   // 测土校正：还很湿 / 有点干 / 很干
 
   // 植物习性表（初始值，需查证）
@@ -27,7 +28,8 @@ const DEFAULT_PARAMS = {
   soils: {
     nutrient: { name: '营养土',     k: 0.8 },
     garden:   { name: '普通园土',   k: 1.0 },
-    grit:     { name: '多肉颗粒土', k: 1.5 }
+    grit:     { name: '多肉颗粒土', k: 1.5 },
+    hydro:    { name: '水培',       k: null, hydro: true }   // 水培不算水分余额，改为提醒换水
   },
 
   // 温度系数：当日平均气温 低于15℃ / 15–25℃ / 25–30℃ / 高于30℃
@@ -37,6 +39,10 @@ const DEFAULT_PARAMS = {
   // 光照系数
   lightK: { dim: 0.7, bright: 1.0, sun1: 1.15, sun3: 1.3 }
 };
+
+// 新品种按类型给出默认的植物系数和提醒线
+const TYPE_DEFAULTS = { '喜湿': { k: 1.2, line: 50 }, '中等': { k: 1.0, line: 40 }, '耐旱': { k: 0.6, line: 15 } };
+const LIGHT_NEEDS = ['喜光', '散射光', '半阴', '耐阴也耐晒'];
 
 // 添加植物时的选项
 const BRIGHT_OPTIONS = { lt3: '少于3小时', mid: '3到6小时', gt6: '6小时以上' };
@@ -51,7 +57,7 @@ const OBS_ITEMS = [
   { key: 'tip',     name: '叶尖焦枯',   opts: ['无', '有', '看不清'] },
   { key: 'pest',    name: '斑点或虫子', opts: ['无', '有', '看不清'] },
   { key: 'leggy',   name: '徒长',       opts: ['无', '疑似', '看不清'] },
-  { key: 'soil',    name: '土壤表面',   opts: ['干', '湿', '看不清'] }
+  { key: 'soil',    name: '土壤表面',   opts: ['很干', '干', '湿', '看不清'] }
 ];
 
 // 视觉大模型

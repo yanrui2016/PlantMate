@@ -8,6 +8,7 @@ function emptyData() {
     plants: [],
     settings: { province: '', city: '', lat: null, lon: null, apiKey: '', model: 'glm-4.6v-flash', demo: false },
     overrides: {},          // 用户在高级设置里改过的参数
+    customPlants: {},       // 用户自己添加的植物品种
     weatherCache: null      // 最近一次获取的天气（首页天气卡片用）
   };
 }
@@ -40,10 +41,12 @@ function saveData(data) {
 function getParams(data) {
   const p = JSON.parse(JSON.stringify(DEFAULT_PARAMS));
   const o = (data && data.overrides) || {};
-  ['base'].forEach(k => { if (typeof o[k] === 'number') p[k] = o[k]; });
+  ['base', 'hydroDays'].forEach(k => { if (typeof o[k] === 'number') p[k] = o[k]; });
   ['tempK', 'humK', 'lightK'].forEach(g => { if (o[g]) Object.assign(p[g], o[g]); });
   if (o.plants) for (const id in o.plants) if (p.plants[id]) Object.assign(p.plants[id], o.plants[id]);
-  if (o.soils) for (const id in o.soils) if (p.soils[id]) Object.assign(p.soils[id], o.soils[id]);
+  if (o.soils) for (const id in o.soils) if (p.soils[id] && !p.soils[id].hydro) Object.assign(p.soils[id], o.soils[id]);
+  const custom = (data && data.customPlants) || {};
+  for (const id in custom) p.plants[id] = Object.assign({}, custom[id], { likeLight: custom[id].light === '喜光', custom: true });
   return p;
 }
 

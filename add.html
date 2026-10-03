@@ -16,6 +16,13 @@
       <input type="text" id="name" maxlength="12" placeholder="给它起个名字，比如 小绿" style="width:360px">
       <p class="tip" id="name-err" role="alert"></p>
     </div>
+    <div>
+      <span class="field" style="font-weight:700;font-size:17px;display:block;margin-bottom:8px">照片（可以不选）</span>
+      <div class="photo-pick"><span id="pic"></span>
+        <label class="btn" for="photo">选择照片</label><input type="file" id="photo" accept="image/*" class="hidden">
+        <button type="button" class="btn hidden" id="rm-photo">去掉照片</button></div>
+      <p class="tip">会显示在“我的植物”里。照片会被缩小保存在这台电脑的浏览器里。</p>
+    </div>
     <div id="groups"></div>
     <div class="btn-row"><button type="submit" class="btn btn-primary">保存</button><a class="btn" href="index.html">取消</a></div>
   </form>
@@ -36,8 +43,8 @@ const soilOpts = {};
 for (const k in p.soils) soilOpts[k] = p.soils[k].name;
 
 const groups = [
-  { key: 'species', title: '2. 品种', opts: plantOpts, def: 'pothos', tip: '选一种，程序会用这种植物的习性来计算' },
-  { key: 'soil', title: '3. 土壤', opts: soilOpts, def: 'garden', tip: '不知道的话选“普通园土”' },
+  { key: 'species', title: '2. 品种', opts: plantOpts, def: 'pothos', tip: '选一种，程序会用这种植物的习性来计算。没有你的植物？可以到<a href="settings.html#advanced">高级设置</a>里添加新品种' },
+  { key: 'soil', title: '3. 土壤', opts: soilOpts, def: 'garden', tip: '不知道的话选“普通园土”。水培的植物不算水分，改为提醒换水' },
   { key: 'bright', title: '4. 每天明亮光照大约', opts: BRIGHT_OPTIONS, def: 'mid', tip: '' },
   { key: 'sun', title: '5. 其中阳光直射大约', opts: SUN_OPTIONS, def: 'none', tip: '' },
   { key: 'env', title: '6. 放在哪里', opts: ENV_OPTIONS, def: 'indoor', tip: '封闭阳台算室内；露天的植物下大雨时会自动加满水分' }
@@ -46,11 +53,37 @@ if (!editing) groups.push({ key: 'feel', title: '7. 现在土摸起来怎么样'
 
 document.getElementById('groups').innerHTML = groups.map(g => {
   const cur = editing && editing[g.key] ? editing[g.key] : g.def;
-  return '<fieldset style="margin-bottom:22px"><legend>' + g.title + '</legend><div class="choices">' +
+  return '<fieldset id="g-' + g.key + '" style="margin-bottom:22px"><legend>' + g.title + '</legend><div class="choices">' +
     Object.keys(g.opts).map(k => '<input type="radio" name="' + g.key + '" id="' + g.key + '-' + k + '" value="' + k + '"' + (k === cur ? ' checked' : '') + '>' +
       '<label for="' + g.key + '-' + k + '">' + esc(g.opts[k]) + '</label>').join('') +
     '</div>' + (g.tip ? '<p class="tip">' + g.tip + '</p>' : '') + '</fieldset>';
 }).join('');
+
+groups.forEach(g => {
+  if (!document.querySelector('input[name="' + g.key + '"]:checked')) document.querySelector('input[name="' + g.key + '"]').checked = true;
+});
+
+// 照片
+let photo = editing ? editing.photo || '' : '';
+function showPic() {
+  document.getElementById('pic').innerHTML = avatarHtml({ photo: photo }, 72);
+  document.getElementById('rm-photo').classList.toggle('hidden', !photo);
+}
+showPic();
+document.getElementById('photo').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try { photo = await makeThumb(URL.createObjectURL(f)); showPic(); } catch (err) { toast(err.message); }
+});
+document.getElementById('rm-photo').addEventListener('click', () => { photo = ''; showPic(); });
+
+// 选了水培，就不用问“土摸起来怎么样”
+function toggleFeel() {
+  const g = document.getElementById('g-feel');
+  if (g) g.classList.toggle('hidden', document.querySelector('input[name="soil"]:checked').value === 'hydro');
+}
+document.querySelectorAll('input[name="soil"]').forEach(r => r.addEventListener('change', toggleFeel));
+toggleFeel();
 
 if (editing) {
   document.getElementById('title').textContent = '修改植物';
@@ -69,15 +102,19 @@ document.getElementById('form').addEventListener('submit', e => {
     return;
   }
   const val = k => document.querySelector('input[name="' + k + '"]:checked').value;
-  const fields = { name: name, species: val('species'), soil: val('soil'), bright: val('bright'), sun: val('sun'), env: val('env') };
+  const fields = { name: name, species: val('species'), soil: val('soil'), bright: val('bright'), sun: val('sun'), env: val('env'), photo: photo };
+  const hydroNow = p.soils[fields.soil].hydro;
   let plant;
   if (editing) {
+    const wasHydro = p.soils[editing.soil] && p.soils[editing.soil].hydro;
     plant = Object.assign(editing, fields);
+    if (hydroNow && !wasHydro) plant.lastChange = todayStr();                       // 改成水培：从今天开始算换水
+    if (!hydroNow && wasHydro) { plant.balance = p.calib.some; plant.needCalib = true; }   // 改成土培：请用户测土
     addLog(plant, 'edit', '修改了植物信息');
   } else {
-    plant = Object.assign(fields, { id: data.nextId++, balance: p.calib[val('feel')], lastUpdate: todayStr(), logs: [], history: [] });
+    plant = Object.assign(fields, { id: data.nextId++, balance: hydroNow ? 100 : p.calib[val('feel')], lastUpdate: todayStr(), lastChange: todayStr(), logs: [], history: [] });
     addLog(plant, 'add', '添加了这盆植物');
-    addHistory(plant, todayStr(), plant.balance);
+    if (!hydroNow) addHistory(plant, todayStr(), plant.balance);
     data.plants.push(plant);
   }
   saveData(data);

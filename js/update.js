@@ -10,7 +10,7 @@ async function updateAll(data) {
   let need = 0;
   data.plants.forEach(pl => {
     const gap = daysBetween(pl.lastUpdate, today);
-    if (gap > 0 && gap <= p.maxGapDays) need = Math.max(need, gap);
+    if (!isHydro(pl, p) && gap > 0 && gap <= p.maxGapDays) need = Math.max(need, gap);
   });
 
   // 获取天气（顺便更新首页天气卡片）
@@ -30,6 +30,7 @@ async function updateAll(data) {
   data.plants.forEach(pl => {
     const gap = daysBetween(pl.lastUpdate, today);
     if (gap <= 0) return;
+    if (isHydro(pl, p)) { pl.lastUpdate = today; return; }   // 水培只看换水天数，不补算
     if (gap > p.maxGapDays) {        // 太久没打开，推算误差太大，请用户测土
       pl.needCalib = true;
       pl.lastUpdate = today;

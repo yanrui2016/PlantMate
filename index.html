@@ -81,10 +81,12 @@ function renderPlants(data) {
     const st = waterStatus(pl, p);
     return '<article class="card plant-card">' +
       '<a class="btn icon-btn" href="diagnose.html?id=' + pl.id + '" aria-label="给' + esc(pl.name) + '拍照诊断">' + icon('camera', 22) + '</a>' +
-      '<a class="title" href="detail.html?id=' + pl.id + '"><span class="avatar">' + icon('leaf', 26) + '</span>' +
+      '<a class="title" href="detail.html?id=' + pl.id + '">' + avatarHtml(pl, 52) +
       '<span><h3>' + esc(pl.name) + '</h3><span class="muted">' + esc(plantDesc(pl, p)) + '</span></span></a>' +
-      '<div class="bottom-line"><span>水分</span><b>' + Math.round(pl.balance) + '%</b></div>' + waterBar(pl, p) +
-      '<div class="bottom-line">' + statusChip(st) + '<span class="muted">' + daysText(daysToWater(pl, w, p)) + '</span></div></article>';
+      (isHydro(pl, p)
+        ? '<div class="bottom-line"><span>水培</span><b>' + (daysSinceChange(pl) === 0 ? '今天换过水' : daysSinceChange(pl) + '天前换水') + '</b></div>'
+        : '<div class="bottom-line"><span>水分</span><b>' + Math.round(pl.balance) + '%</b></div>' + waterBar(pl, p)) +
+      '<div class="bottom-line">' + statusChip(st) + '<span class="muted">' + nextText(pl, w, p) + '</span></div></article>';
   }).join('');
 }
 

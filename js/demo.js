@@ -27,7 +27,8 @@ function demoWeather(pastDays) {
 // 演示照片识别的几种场景
 const DEMO_SCENES = {
   wilt:    { name: '叶子有点蔫、少量发黄', obs: { quality: '清晰', leaf: '少量发黄', wilt: '轻度', tip: '无', pest: '无', leggy: '无', soil: '湿' } },
-  healthy: { name: '健康',                 obs: { quality: '清晰', leaf: '正常',     wilt: '无',   tip: '无', pest: '无', leggy: '无', soil: '干' } },
+  healthy: { name: '健康',                 obs: { quality: '清晰', leaf: '正常',     wilt: '无',   tip: '无', pest: '无', leggy: '无', soil: '湿' } },
+  dry:     { name: '土很干',               obs: { quality: '清晰', leaf: '正常',     wilt: '无',   tip: '无', pest: '无', leggy: '无', soil: '很干' } },
   pest:    { name: '叶片有斑点',           obs: { quality: '清晰', leaf: '少量发黄', wilt: '无',   tip: '无', pest: '有', leggy: '无', soil: '看不清' } },
   leggy:   { name: '茎细长（徒长）',       obs: { quality: '清晰', leaf: '正常',     wilt: '无',   tip: '无', pest: '无', leggy: '疑似', soil: '干' } },
   blurry:  { name: '照片太暗',             obs: { quality: '模糊或太暗', leaf: '看不清', wilt: '看不清', tip: '看不清', pest: '看不清', leggy: '看不清', soil: '看不清' } }

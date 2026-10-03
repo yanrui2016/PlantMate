@@ -12,6 +12,7 @@ function symptomOf(obs) {
 
 // 第一步：3×3 水分判断表
 function judgeWater(plant, obs, p, weather) {
+  if (isHydro(plant, p)) return judgeHydro(plant, obs, p);
   const st = waterStatus(plant, p);
   const level3 = st.code === 'low' || st.code === 'empty' ? 'low' : (st.code === 'full' ? 'high' : 'normal');
   const sym = symptomOf(obs);
@@ -38,6 +39,44 @@ function judgeWater(plant, obs, p, weather) {
       detail: '水分还有' + pct + '，叶子却有点蔫或发黄。土里的水很多却还蔫，问题可能不是缺水，再浇水会让根更难受。',
       steps: ['先暂停浇水，等水分降到提醒线再浇', '检查盆底排水孔有没有堵住', '两三天后再拍照看看'] };
   return { level: 'ok', title: '水分充足，不用浇', rule: rule, detail: '水分' + pct + '，' + when + '。', steps: [] };
+}
+
+// 水培植物：按换水天数 × 叶片症状判断
+function judgeHydro(plant, obs, p) {
+  const st = waterStatus(plant, p);
+  const d = daysSinceChange(plant);
+  const sick = symptomOf(obs) === 'sick';
+  const rule = '水培：' + st.text + (sick ? ' + 萎蔫或发黄' : '');
+  const root = ['看看根是不是发黑发软，有烂根就剪掉', '倒掉旧水，清洗容器，换上干净的水'];
+  if (st.code === 'empty') return { level: 'danger', title: '很久没换水了，马上换水', rule: rule, detail: '已经' + d + '天没换水，水容易变质、根容易烂。', steps: root };
+  if (st.code === 'low') {
+    if (sick) return { level: 'danger', title: '该换水了，并检查根部', rule: rule, detail: d + '天没换水，叶子也有点蔫或发黄。', steps: root };
+    return { level: 'warn', title: '该换水了', rule: rule, detail: '已经' + d + '天没换水，建议每' + p.hydroDays + '天换一次。', steps: ['倒掉旧水，换上干净的水', '水位不要淹没全部的根'] };
+  }
+  if (sick) return { level: 'warn', title: '叶子有点蔫或发黄，检查根部', rule: rule, detail: '换水时间还没到，但叶子状态不好，可能是烂根或水位太高。', steps: root };
+  return { level: 'ok', title: '状态良好', rule: rule, detail: '距上次换水' + d + '天，' + nextText(plant, null, p) + '。', steps: [] };
+}
+
+// 用户确认“土壤表面干”时，按植物类型给出浇水建议（照片看得见土表，听照片的）
+function judgeSoil(plant, obs, p, weather) {
+  if (!obs || isHydro(plant, p) || (obs.soil !== '干' && obs.soil !== '很干')) return null;
+  const sp = p.plants[plant.species];
+  const very = obs.soil === '很干';
+  const sick = symptomOf(obs) === 'sick';
+  const rule = '用户确认：土表' + obs.soil + ' + ' + sp.type + '植物' + (sick ? ' + 萎蔫或发黄' : '');
+  if (sp.type !== '耐旱' || very) {
+    if (sick)
+      return { level: 'danger', title: '缺水，立即浇透', rule: rule,
+        detail: '照片里土' + (very ? '很干' : '是干的') + '，叶子也有点蔫或发黄，说明缺水。', steps: ['马上浇透，浇到盆底有水流出', '浇完点“我浇透了”'] };
+    if (sp.type === '喜湿' || very)
+      return { level: 'warn', title: (very ? '土很干' : '表土干了') + '，该浇水了', rule: rule,
+        detail: sp.type === '耐旱' ? sp.name + '耐旱，但土已经很干了。' : (sp.type === '喜湿' ? sp.name + '喜欢湿润，表土干了就该浇水。' : '照片里的土已经很干了。'),
+        steps: sp.type === '耐旱' ? ['手指插进土里，如果整盆都干透了就浇透', '浇完点“我浇透了”'] : ['今天浇透', '浇完点“我浇透了”'] };
+    return { level: 'warn', title: '表土干了，可以浇水了', rule: rule,
+      detail: sp.name + '适合表土干2到3厘米再浇。', steps: ['手指插进土里2到3厘米，如果也是干的就浇透', '浇完点“我浇透了”'] };
+  }
+  return { level: 'ok', title: '表土干了，但先不浇', rule: rule,
+    detail: sp.name + '耐旱，要等整盆土干透再浇，' + daysText(daysToWater(plant, weather, p)) + '。', steps: [] };
 }
 
 // 第二步：独立的检查，有问题就追加一条
@@ -77,13 +116,14 @@ function judgeExtras(plant, obs, p, days) {
     }
   }
 
-  // 照片反过来检查水分模型（表土总比下层先干，所以“土表干”只在余额很高时才检查）
-  if (obs && plant.balance >= p.fullLine && obs.soil === '干')
-    out.push({ level: 'info', title: '推算可能不准，请测一下土', detail: '推算水分很多，照片里的土却是干的。', steps: ['点“我摸了一下土”校正'], rule: '余额高 + 土表干' });
-  if (obs && plant.balance < sp.line && obs.soil === '湿')
+  // 照片反过来检查水分模型（表土总比下层先干，所以“土表干”只在余额很高时才检查）；水培不检查
+  const soilPlant = !isHydro(plant, p);
+  if (soilPlant && obs && plant.balance >= p.fullLine && (obs.soil === '干' || obs.soil === '很干'))
+    out.push({ level: 'info', title: '推算可能不准，请测一下土', detail: '推算水分很多，照片里的土却是干的。这次的情况可以用来校准系数。', steps: ['点“我摸了一下土”校正'], rule: '余额高 + 土表干' });
+  if (soilPlant && obs && plant.balance < sp.line && obs.soil === '湿')
     out.push({ level: 'info', title: '推算可能不准，请测一下土', detail: '推算水分不多，照片里的土却是湿的。', steps: ['点“我摸了一下土”校正'], rule: '余额低 + 土表湿' });
 
-  if (plant.needCalib)
+  if (soilPlant && plant.needCalib)
     out.push({ level: 'info', title: '很久没更新了，请测一下土', detail: '超过30天没有打开，水分推算误差会很大。', steps: ['点“我摸了一下土”重新开始'], rule: '超过30天未更新' });
   return out;
 }
@@ -93,7 +133,11 @@ function judgePlant(plant, obs, p, days) {
   if (obs && obs.quality !== '清晰')
     return [{ level: 'info', title: '请重新拍照', detail: '照片太暗、太模糊或看不到植物，无法判断。', steps: ['白天在自然光下重拍'], rule: '照片质量差' }];
   const today = days ? days[todayStr()] : null;
-  const list = [judgeWater(plant, obs, p, today)].concat(judgeExtras(plant, obs, p, days));
+  let main = judgeWater(plant, obs, p, today);
+  const soil = judgeSoil(plant, obs, p, today);
+  // 用户确认的土表情况：比推算结论更紧急、或与“可能浇水过多”矛盾、或推算结论只是正常时，以照片为准
+  if (soil && (LEVEL_ORDER[soil.level] < LEVEL_ORDER[main.level] || main.title === '可能浇水过多' || main.level === 'ok')) main = soil;
+  const list = [main].concat(judgeExtras(plant, obs, p, days));
   return list.sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
 }
 
