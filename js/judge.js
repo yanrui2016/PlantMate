@@ -122,9 +122,9 @@ function judgeExtras(plant, obs, p, days) {
   // 照片反过来检查水分模型（表土总比下层先干，所以“土表干”只在余额很高时才检查）；水培不检查
   const soilPlant = !isHydro(plant, p);
   if (soilPlant && obs && plant.balance >= p.fullLine && (obs.soil === '干' || obs.soil === '很干'))
-    out.push({ level: 'info', title: '推算可能不准，请测一下土', detail: '推算水分很多，照片里的土却是干的。这次的情况可以用来校准系数。', steps: ['点“我摸了一下土”校正'], rule: '余额高 + 土表干' });
+    out.push({ level: 'info', title: '推算和照片对不上', detail: '程序算出来水分还很多，但照片里的土是干的。', steps: ['用手指插进土里2到3厘米摸一下', '点这个页面上的“我摸了一下土”按钮，按实际感觉选择'], rule: '余额高 + 土表干' });
   if (soilPlant && obs && plant.balance < sp.line && obs.soil === '湿')
-    out.push({ level: 'info', title: '推算可能不准，请测一下土', detail: '推算水分不多，照片里的土却是湿的。', steps: ['点“我摸了一下土”校正'], rule: '余额低 + 土表湿' });
+    out.push({ level: 'info', title: '推算和照片对不上', detail: '程序算出来水分不多，但照片里的土是湿的。', steps: ['用手指插进土里2到3厘米摸一下', '点这个页面上的“我摸了一下土”按钮，按实际感觉选择'], rule: '余额低 + 土表湿' });
 
   if (soilPlant && plant.needCalib)
     out.push({ level: 'info', title: '很久没更新了，请测一下土', detail: '超过30天没有打开，水分推算误差会很大。', steps: ['点“我摸了一下土”重新开始'], rule: '超过30天未更新' });
@@ -144,9 +144,9 @@ function judgePlant(plant, obs, p, days) {
   return list.sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
 }
 
-// 最近3天内的诊断结果，用于首页和详情页
+// 最近3天内的诊断结果，用于首页和详情页；拍照后又浇水、测土或换水，照片就过时了，不再参考
 function recentObs(plant) {
   const d = plant.lastDiag;
-  if (!d) return null;
+  if (!d || d.stale) return null;
   return daysBetween(d.date, todayStr()) <= 3 ? d.obs : null;
 }

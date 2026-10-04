@@ -93,7 +93,7 @@ function render() {
   };
   document.getElementById('b-little').onclick = () => { waterPlant(plant, 'little', p); saveData(data); toast('已记录：浇了一点'); render(); };
   document.getElementById('b-feel').onclick = async () => {
-    const feel = await dialog('土摸起来怎么样？', '<p>把手指插进土里2到3厘米，感觉一下。选完后水分会改成' + p.calib.wet + '% / ' + p.calib.some + '% / ' + p.calib.dry + '%。</p>',
+    const feel = await dialog('土摸起来怎么样？', '<p>把手指插进土里2到3厘米，感觉一下。选完后水分会改成' + p.calib.wet + '% / ' + p.calib.some + '% / ' + p.calib.dry + '%。</p><p class="tip">刚浇透水的话，请点“我浇透了”，不用测土。</p>',
       [{ text: '还很湿', value: 'wet' }, { text: '有点干', value: 'some' }, { text: '很干', value: 'dry' }, { text: '取消', value: null }]);
     if (!feel) return;
     calibrate(plant, feel, p); saveData(data); toast('水分已校正'); render();

@@ -96,7 +96,11 @@ function daysText(n) {
 }
 
 // 浇水：full 浇透 / little 浇了一点
+// 浇水、测土、换水之后，之前的照片诊断就过时了
+function staleDiag(plant) { if (plant.lastDiag) plant.lastDiag.stale = true; }
+
 function waterPlant(plant, kind, p) {
+  staleDiag(plant);
   if (kind === 'full') {
     plant.balance = 100;
     addLog(plant, 'water', '浇透');
@@ -110,6 +114,7 @@ function waterPlant(plant, kind, p) {
 
 // 水培：换水 / 加水
 function changeWater(plant) {
+  staleDiag(plant);
   plant.lastChange = todayStr();
   addLog(plant, 'water', '换水');
 }
@@ -119,6 +124,7 @@ function addWaterHydro(plant) {
 
 // 测土校正：wet 还很湿 / some 有点干 / dry 很干
 function calibrate(plant, feel, p) {
+  staleDiag(plant);
   const names = { wet: '还很湿', some: '有点干', dry: '很干' };
   plant.balance = p.calib[feel];
   plant.lastUpdate = todayStr();
