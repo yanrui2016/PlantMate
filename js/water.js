@@ -73,11 +73,11 @@ function waterStatus(plant, p) {
   return { code: 'ok', text: '正常' };
 }
 
-// 预计几天后浇水 =（当前余额 − 提醒线）÷ 今日消耗，取整（还没到提醒线时至少是1天）
+// 预计几天后浇水 =（当前余额 − 提醒线）÷ 今日消耗，向上取整（还没到提醒线时至少是1天）
 function daysToWater(plant, weather, p) {
   const line = p.plants[plant.species].line;
   if (plant.balance < line) return 0;
-  return Math.max(1, Math.floor((plant.balance - line) / dailyUse(plant, weatherFor(plant, weather, todayStr(), p), p)));
+  return Math.max(1, Math.ceil((plant.balance - line) / dailyUse(plant, weatherFor(plant, weather, todayStr(), p), p)));
 }
 
 // 下次浇水或换水的提示文字（水培和土培通用）
