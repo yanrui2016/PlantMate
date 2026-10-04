@@ -10,6 +10,9 @@ const DEFAULT_PARAMS = {
   littleWater: 30,   // “浇了一点”增加的水分（%）
   maxGapDays: 30,    // 超过这么多天没打开，就不补算，请用户测土
   hydroDays: 7,      // 水培植物建议几天换一次水
+  heatTemp: 22,      // 冬季供暖时室内的温度（℃）
+  heatHum: 30,       // 冬季供暖时室内的空气湿度（%）
+  heatStart: '11-15', heatEnd: '03-15',   // 供暖期（月-日），默认按北京
   calib: { wet: 70, some: 40, dry: 10 },   // 测土校正：还很湿 / 有点干 / 很干
 
   // 植物习性表（初始值，需查证）
@@ -48,6 +51,9 @@ const LIGHT_NEEDS = ['喜光', '散射光', '半阴', '耐阴也耐晒'];
 const BRIGHT_OPTIONS = { lt3: '少于3小时', mid: '3到6小时', gt6: '6小时以上' };
 const SUN_OPTIONS = { none: '没有', s1: '1到3小时', s3: '3小时以上' };
 const ENV_OPTIONS = { indoor: '室内', outdoor: '露天' };
+const HEAT_OPTIONS = { yes: '有暖气', no: '没有' };
+// 冬季集中供暖的省份：选这些省份时，“冬季供暖”默认选“有暖气”
+const NORTH_PROVINCES = ['北京市', '天津市', '河北省', '山西省', '内蒙古自治区', '辽宁省', '吉林省', '黑龙江省', '山东省', '河南省', '陕西省', '甘肃省', '青海省', '宁夏回族自治区', '新疆维吾尔自治区', '西藏自治区'];
 
 // 照片观察项（AI只能从这些选项里选）
 const OBS_ITEMS = [

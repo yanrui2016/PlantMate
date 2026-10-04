@@ -23,13 +23,22 @@
         <button type="button" class="btn hidden" id="rm-photo">去掉照片</button></div>
       <p class="tip">会显示在“我的植物”里。照片会被缩小保存在这台电脑的浏览器里。</p>
     </div>
-    <div id="groups"></div>
+    <div id="groups-a"></div>
+    <details id="quick" class="card" style="box-shadow:none;margin:-8px 0 22px">
+      <summary style="cursor:pointer;font-weight:700">品种里找不到？新建品种</summary>
+      <div style="margin-top:12px"><div id="q-form"></div>
+        <button type="button" class="btn btn-primary" id="q-add">新建并选中这个品种</button> <span class="tip" id="q-msg" role="status"></span></div>
+    </details>
+    <div id="groups-b"></div>
     <div class="btn-row"><button type="submit" class="btn btn-primary">保存</button><a class="btn" href="index.html">取消</a></div>
   </form>
 </main>
 <script src="js/config.js"></script>
 <script src="js/storage.js"></script>
 <script src="js/water.js"></script>
+<script src="js/demo.js"></script>
+<script src="js/weather.js"></script>
+<script src="js/vision.js"></script>
 <script src="js/ui.js"></script>
 <script>
 renderNav('home');
@@ -43,25 +52,37 @@ const soilOpts = {};
 for (const k in p.soils) soilOpts[k] = p.soils[k].name;
 
 const groups = [
-  { key: 'species', title: '2. 品种', opts: plantOpts, def: 'pothos', tip: '选一种，程序会用这种植物的习性来计算。没有你的植物？可以到<a href="settings.html#advanced">高级设置</a>里添加新品种' },
+  { key: 'species', title: '2. 品种', opts: plantOpts, def: 'pothos', tip: '选一种，程序会用这种植物的习性来计算。没有你的植物？点下面的“新建品种”' },
   { key: 'soil', title: '3. 土壤', opts: soilOpts, def: 'garden', tip: '不知道的话选“普通园土”。水培的植物不算水分，改为提醒换水' },
   { key: 'bright', title: '4. 每天明亮光照大约', opts: BRIGHT_OPTIONS, def: 'mid', tip: '' },
   { key: 'sun', title: '5. 其中阳光直射大约', opts: SUN_OPTIONS, def: 'none', tip: '' },
-  { key: 'env', title: '6. 放在哪里', opts: ENV_OPTIONS, def: 'indoor', tip: '封闭阳台算室内；露天的植物下大雨时会自动加满水分' }
+  { key: 'env', title: '6. 放在哪里', opts: ENV_OPTIONS, def: 'indoor', tip: '封闭阳台算室内；露天的植物下大雨时会自动加满水分' },
+  { key: 'heating', title: '7. 冬季有暖气吗', opts: HEAT_OPTIONS, def: NORTH_PROVINCES.indexOf(data.settings.province) >= 0 ? 'yes' : 'no', tip: '只有放在室内的植物才问这一项。选“有暖气”，供暖期里按室内供暖条件计算（暖和、空气干燥），不用室外天气。没有暖气的封闭阳台选“没有”' }
 ];
-if (!editing) groups.push({ key: 'feel', title: '7. 现在土摸起来怎么样', opts: { wet: '还很湿', some: '有点干', dry: '很干' }, def: 'some', tip: '把手指插进土里2到3厘米感觉一下，程序从这里开始计算水分' });
+if (!editing) groups.push({ key: 'feel', title: '8. 现在土摸起来怎么样', opts: { wet: '还很湿', some: '有点干', dry: '很干' }, def: 'some', tip: '把手指插进土里2到3厘米感觉一下，程序从这里开始计算水分' });
 
-document.getElementById('groups').innerHTML = groups.map(g => {
-  const cur = editing && editing[g.key] ? editing[g.key] : g.def;
+function renderGroups(sel) {
+  const keep = {};
+  groups.forEach(g => { const c = document.querySelector('input[name="' + g.key + '"]:checked'); if (c) keep[g.key] = c.value; });
+  if (sel) keep.species = sel;
+  const html = groups.map(g => {
+  const cur = keep[g.key] || (editing && editing[g.key] ? editing[g.key] : g.def);
   return '<fieldset id="g-' + g.key + '" style="margin-bottom:22px"><legend>' + g.title + '</legend><div class="choices">' +
     Object.keys(g.opts).map(k => '<input type="radio" name="' + g.key + '" id="' + g.key + '-' + k + '" value="' + k + '"' + (k === cur ? ' checked' : '') + '>' +
       '<label for="' + g.key + '-' + k + '">' + esc(g.opts[k]) + '</label>').join('') +
     '</div>' + (g.tip ? '<p class="tip">' + g.tip + '</p>' : '') + '</fieldset>';
-}).join('');
-
-groups.forEach(g => {
-  if (!document.querySelector('input[name="' + g.key + '"]:checked')) document.querySelector('input[name="' + g.key + '"]').checked = true;
 });
+  document.getElementById('groups-a').innerHTML = html[0];
+  document.getElementById('groups-b').innerHTML = html.slice(1).join('');
+  groups.forEach(g => {
+    if (!document.querySelector('input[name="' + g.key + '"]:checked')) document.querySelector('input[name="' + g.key + '"]').checked = true;
+  });
+  document.querySelectorAll('input[name="soil"]').forEach(r => r.addEventListener('change', toggleFeel));
+  document.querySelectorAll('input[name="env"]').forEach(r => r.addEventListener('change', toggleHeat));
+  toggleFeel();
+  toggleHeat();
+}
+renderGroups();
 
 // 照片
 let photo = editing ? editing.photo || '' : '';
@@ -78,12 +99,27 @@ document.getElementById('photo').addEventListener('change', async e => {
 document.getElementById('rm-photo').addEventListener('click', () => { photo = ''; showPic(); });
 
 // 选了水培，就不用问“土摸起来怎么样”
+// 不在室内，就不问“冬季有暖气吗”
+function toggleHeat() {
+  document.getElementById('g-heating').classList.toggle('hidden', document.querySelector('input[name="env"]:checked').value !== 'indoor');
+}
 function toggleFeel() {
   const g = document.getElementById('g-feel');
   if (g) g.classList.toggle('hidden', document.querySelector('input[name="soil"]:checked').value === 'hydro');
 }
-document.querySelectorAll('input[name="soil"]').forEach(r => r.addEventListener('change', toggleFeel));
-toggleFeel();
+// 快捷新建品种
+document.getElementById('q-form').innerHTML = speciesFormHtml('q', true);
+bindSpeciesAI('q', () => document.getElementById('q-name').value);
+document.getElementById('q-add').onclick = () => {
+  const f = readSpeciesForm('q', document.getElementById('q-name').value);
+  const r = addCustomSpecies(data, f);
+  if (r.error) { document.getElementById('q-msg').textContent = r.error; return; }
+  Object.assign(p, getParams(data));
+  plantOpts[r.id] = f.name.trim();
+  renderGroups(r.id);
+  document.getElementById('quick').open = false;
+  toast('已新建品种“' + f.name.trim() + '”并选中');
+};
 
 if (editing) {
   document.getElementById('title').textContent = '修改植物';
@@ -103,6 +139,7 @@ document.getElementById('form').addEventListener('submit', e => {
   }
   const val = k => document.querySelector('input[name="' + k + '"]:checked').value;
   const fields = { name: name, species: val('species'), soil: val('soil'), bright: val('bright'), sun: val('sun'), env: val('env'), photo: photo };
+  fields.heating = fields.env === 'indoor' ? val('heating') : 'no';
   const hydroNow = p.soils[fields.soil].hydro;
   let plant;
   if (editing) {

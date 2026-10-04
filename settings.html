@@ -53,21 +53,21 @@
     <div class="table-wrap"><table><thead><tr><th>植物</th><th>类型</th><th>植物系数</th><th>提醒线 %</th><th>最低温度 ℃</th><th>最高温度 ℃</th><th>光照需求</th><th>怕暴晒</th><th></th></tr></thead>
       <tbody id="t-plants"></tbody></table></div>
     <details class="card" style="margin-top:14px;box-shadow:none"><summary style="cursor:pointer;font-weight:700">添加新品种</summary>
-      <div class="form" style="gap:14px;margin-top:14px">
-        <div><label class="field" for="n-name">名字</label><input type="text" id="n-name" maxlength="10" placeholder="比如 茉莉"></div>
-        <div class="btn-row">
-          <label>类型 <select id="n-type"><option>喜湿</option><option selected>中等</option><option>耐旱</option></select></label>
-          <label>最低温度 ℃ <input type="number" id="n-tmin" value="15"></label>
-          <label>最高温度 ℃ <input type="number" id="n-tmax" value="30"></label>
-          <label>光照需求 <select id="n-light"></select></label>
-          <label><input type="checkbox" id="n-nosun"> 怕暴晒</label>
-        </div>
-        <p class="tip">植物系数和提醒线会按类型自动填好（喜湿 1.2 / 50%，中等 1.0 / 40%，耐旱 0.6 / 15%），添加后可以在上面的表里修改。请记下查到的资料来源。</p>
+      <div class="form" style="gap:10px;margin-top:14px">
+        <div id="n-form"></div>
         <div><button class="btn btn-primary" id="n-add">添加这个品种</button> <span class="tip" id="n-msg" role="status"></span></div>
       </div>
     </details>
     <h3 style="margin-top:18px">土壤系数</h3><div class="btn-row" id="t-soils"></div>
     <h3 style="margin-top:18px">水培换水间隔（天）</h3><input type="number" id="hydro-days" aria-label="水培换水间隔">
+    <h3 style="margin-top:18px">冬季供暖</h3>
+    <div class="btn-row" style="align-items:center">
+      <label>供暖开始（月-日） <input type="text" id="heat-start" style="width:96px" placeholder="11-15"></label>
+      <label>供暖结束（月-日） <input type="text" id="heat-end" style="width:96px" placeholder="03-15"></label>
+      <label>室内温度 ℃ <input type="number" id="heat-temp"></label>
+      <label>室内湿度 % <input type="number" id="heat-hum"></label>
+    </div>
+    <p class="tip">选了“冬季有暖气”的室内植物，在供暖期里按这里的温度和湿度计算，不用室外天气。</p>
     <h3 style="margin-top:18px">天气和光照系数</h3><div id="t-k"></div>
     <h3 style="margin-top:18px">每天基础消耗 %</h3><input type="number" step="0.5" id="base" aria-label="每天基础消耗">
     <div class="btn-row" style="margin-top:20px"><button class="btn btn-primary" id="save-adv">保存参数</button><button class="btn" id="reset-adv">恢复初始值</button></div>
@@ -177,12 +177,14 @@ function renderAdv() {
   const p = getParams(loadData());
   $('t-plants').innerHTML = Object.keys(p.plants).map(k => {
     const s = p.plants[k];
-    return '<tr><td>' + esc(s.name) + (s.custom ? '<br><span class="tip">自己添加</span>' : '') + '</td><td>' + s.type + '</td><td>' + num('k-' + k, s.k, 0.05) + '</td><td>' + num('line-' + k, s.line) + '</td>' +
+    return '<tr><td>' + esc(s.name) + (s.custom ? '<br><span class="tip">自己添加' + (s.source === 'AI建议' ? ' · AI建议' : '') + '</span>' : '') + '</td><td>' + s.type + '</td><td>' + num('k-' + k, s.k, 0.05) + '</td><td>' + num('line-' + k, s.line) + '</td>' +
       '<td>' + num('tmin-' + k, s.tmin) + '</td><td>' + num('tmax-' + k, s.tmax) + '</td><td>' + s.light + '</td><td>' + (s.noSun ? '是' : '否') + '</td>' +
       '<td>' + (s.custom ? '<button class="btn" data-del="' + k + '" style="min-height:36px;padding:4px 12px">删除</button>' : '') + '</td></tr>';
   }).join('');
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteSpecies(b.dataset.del));
   $('hydro-days').value = p.hydroDays;
+  $('heat-start').value = p.heatStart; $('heat-end').value = p.heatEnd;
+  $('heat-temp').value = p.heatTemp; $('heat-hum').value = p.heatHum;
   $('t-soils').innerHTML = Object.keys(p.soils).filter(k => !p.soils[k].hydro).map(k => '<label style="display:flex;gap:8px;align-items:center">' + p.soils[k].name + num('soil-' + k, p.soils[k].k, 0.05) + '</label>').join('');
   const groups = [
     ['tempK', '温度', { cold: '低于15℃', mild: '15–25℃', warm: '25–30℃', hot: '高于30℃' }],
@@ -196,21 +198,14 @@ function renderAdv() {
 renderAdv();
 
 // ---------- 添加和删除品种 ----------
-$('n-light').innerHTML = LIGHT_NEEDS.map(l => '<option>' + l + '</option>').join('');
+$('n-form').innerHTML = speciesFormHtml('n', true);
+bindSpeciesAI('n', () => $('n-name').value);
 $('n-add').onclick = () => {
   data = loadData();
-  const name = $('n-name').value.trim();
-  const tmin = parseFloat($('n-tmin').value), tmax = parseFloat($('n-tmax').value);
-  const exists = Object.values(getParams(data).plants).some(x => x.name === name);
-  if (!name) { $('n-msg').textContent = '请先填写名字。'; return; }
-  if (exists) { $('n-msg').textContent = '已经有“' + name + '”这个品种了。'; return; }
-  if (isNaN(tmin) || isNaN(tmax) || tmin >= tmax) { $('n-msg').textContent = '请检查温度：最低温度要比最高温度低。'; return; }
-  const type = $('n-type').value;
-  data.customPlants['c' + Date.now()] = { name: name, type: type, k: TYPE_DEFAULTS[type].k, line: TYPE_DEFAULTS[type].line,
-    tmin: tmin, tmax: tmax, light: $('n-light').value, noSun: $('n-nosun').checked };
-  saveData(data);
-  $('n-name').value = '';
-  $('n-msg').textContent = '已添加“' + name + '”，添加植物时就能选到它。';
+  const r = addCustomSpecies(data, readSpeciesForm('n', $('n-name').value));
+  if (r.error) { $('n-msg').textContent = r.error; return; }
+  $('n-msg').textContent = '已添加“' + $('n-name').value.trim() + '”，添加植物时就能选到它。';
+  $('n-name').value = ''; $('n-reason').textContent = ''; delete $('n-ai').dataset.used;
   renderAdv();
 };
 async function deleteSpecies(id) {
@@ -243,9 +238,13 @@ $('save-adv').onclick = () => {
   }
   for (const k in DEFAULT_PARAMS.soils) if (!DEFAULT_PARAMS.soils[k].hydro) o.soils[k] = { k: v('soil-' + k) };
   o.hydroDays = v('hydro-days');
+  o.heatTemp = v('heat-temp'); o.heatHum = v('heat-hum');
+  o.heatStart = $('heat-start').value.trim(); o.heatEnd = $('heat-end').value.trim();
+  const md = /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
+  if (!md.test(o.heatStart) || !md.test(o.heatEnd)) { $('adv-msg').textContent = '供暖日期请按“月-日”填写，比如 11-15。'; return; }
   ['tempK', 'humK', 'lightK'].forEach(g => { for (const k in DEFAULT_PARAMS[g]) o[g][k] = v(g + '-' + k); });
   o.base = v('base');
-  if (bad || isNaN(o.base) || isNaN(o.hydroDays)) { $('adv-msg').textContent = '有格子没填数字，请检查后再保存。'; return; }
+  if (bad || isNaN(o.base) || isNaN(o.hydroDays) || isNaN(o.heatTemp) || isNaN(o.heatHum)) { $('adv-msg').textContent = '有格子没填数字，请检查后再保存。'; return; }
   data.overrides = o;
   data.customPlants = custom;
   saveData(data);

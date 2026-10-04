@@ -41,13 +41,27 @@ function saveData(data) {
 function getParams(data) {
   const p = JSON.parse(JSON.stringify(DEFAULT_PARAMS));
   const o = (data && data.overrides) || {};
-  ['base', 'hydroDays'].forEach(k => { if (typeof o[k] === 'number') p[k] = o[k]; });
+  ['base', 'hydroDays', 'heatTemp', 'heatHum'].forEach(k => { if (typeof o[k] === 'number') p[k] = o[k]; });
+  ['heatStart', 'heatEnd'].forEach(k => { if (typeof o[k] === 'string') p[k] = o[k]; });
   ['tempK', 'humK', 'lightK'].forEach(g => { if (o[g]) Object.assign(p[g], o[g]); });
   if (o.plants) for (const id in o.plants) if (p.plants[id]) Object.assign(p.plants[id], o.plants[id]);
   if (o.soils) for (const id in o.soils) if (p.soils[id] && !p.soils[id].hydro) Object.assign(p.soils[id], o.soils[id]);
   const custom = (data && data.customPlants) || {};
   for (const id in custom) p.plants[id] = Object.assign({}, custom[id], { likeLight: custom[id].light === '喜光', custom: true });
   return p;
+}
+
+// 新建一个自定义品种，返回它的编号；同名时返回错误信息
+function addCustomSpecies(data, f) {
+  const name = (f.name || '').trim();
+  if (!name) return { error: '请先填写名字。' };
+  if (Object.values(getParams(data).plants).some(x => x.name === name)) return { error: '已经有“' + name + '”这个品种了。' };
+  if (!(f.tmin < f.tmax)) return { error: '请检查温度：最低温度要比最高温度低。' };
+  const id = 'c' + Date.now();
+  data.customPlants[id] = { name: name, type: f.type, k: TYPE_DEFAULTS[f.type].k, line: TYPE_DEFAULTS[f.type].line,
+    tmin: f.tmin, tmax: f.tmax, light: f.light, noSun: !!f.noSun, source: f.source || '自己填写' };
+  saveData(data);
+  return { id: id };
 }
 
 function findPlant(data, id) {

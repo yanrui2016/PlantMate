@@ -38,7 +38,7 @@ async function updateAll(data) {
     }
     for (let i = 1; i <= gap; i++) {
       const d = addDays(pl.lastUpdate, i);
-      const w = days ? days[d] : null;
+      const w = weatherFor(pl, days ? days[d] : null, d, p);   // 供暖期的室内植物不需要室外天气
       if (!w) result.missing = true;
       applyDay(pl, w || null, p);
       addHistory(pl, d, pl.balance);

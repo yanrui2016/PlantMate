@@ -98,7 +98,10 @@ function judgeExtras(plant, obs, p, days) {
   else if (sp.likeLight && dim)
     out.push({ level: 'warn', title: '光照可能不足', detail: sp.name + '喜欢光，现在每天明亮光照少于3小时。', steps: ['移到更亮的位置'], rule: '喜光植物 + 光照不足' });
 
-  if (days) {
+  const heated = isHeated(plant, todayStr(), p);
+  if (heated && sp.type === '喜湿')
+    out.push({ level: 'info', title: '暖气房空气干燥', detail: sp.name + '喜欢湿润，暖气房里空气湿度低，叶子容易干尖。', steps: ['不要放在暖气片旁边', '可以在旁边放一盆水，或经常向周围喷水'], rule: '冬季供暖 + 喜湿植物' });
+  if (days && !heated) {   // 供暖期的室内植物不受室外温度影响，不做防寒和遮阴提醒
     const list = [['今天', todayStr()], ['明天', addDays(todayStr(), 1)]];
     for (const [label, d] of list) {
       const w = days[d];

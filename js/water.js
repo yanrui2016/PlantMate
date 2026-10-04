@@ -30,6 +30,20 @@ function dailyUse(plant, weather, p) {
   return p.base * sp.k * tk * hk * lightFactor(plant, p) * soil.k;
 }
 
+// 冬季供暖：室内、选了“有暖气”、日期在供暖期内
+function inHeatSeason(date, p) {
+  const md = date.slice(5);
+  return p.heatStart > p.heatEnd ? (md >= p.heatStart || md <= p.heatEnd) : (md >= p.heatStart && md <= p.heatEnd);
+}
+function isHeated(plant, date, p) {
+  return plant.env === 'indoor' && plant.heating === 'yes' && inHeatSeason(date, p);
+}
+// 这盆植物某一天实际用的天气：供暖期的室内植物用“室内供暖条件”，其他用室外天气
+function weatherFor(plant, weather, date, p) {
+  if (isHeated(plant, date, p)) return { tmean: p.heatTemp, hum: p.heatHum, rain: 0, heated: true };
+  return weather;
+}
+
 function isHydro(plant, p) { return !!p.soils[plant.soil].hydro; }
 function daysSinceChange(plant) { return daysBetween(plant.lastChange || todayStr(), todayStr()); }
 
@@ -63,7 +77,7 @@ function waterStatus(plant, p) {
 function daysToWater(plant, weather, p) {
   const line = p.plants[plant.species].line;
   if (plant.balance < line) return 0;
-  return Math.max(1, Math.floor((plant.balance - line) / dailyUse(plant, weather, p)));
+  return Math.max(1, Math.floor((plant.balance - line) / dailyUse(plant, weatherFor(plant, weather, todayStr(), p), p)));
 }
 
 // 下次浇水或换水的提示文字（水培和土培通用）

@@ -57,3 +57,16 @@ function demoPicture(scene) {
     '<path d="M70 185 h100 l-12 45 h-76 z" fill="#b5764a"/><rect x="64" y="180" width="112" height="12" rx="4" fill="#8f5a36"/>' + dark + '</svg>';
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
+
+// 演示用的品种建议（不联网）
+const DEMO_SPECIES = {
+  '茉莉': { type: '喜湿', tmin: 15, tmax: 32, light: '喜光', noSun: false, reason: '茉莉喜欢温暖湿润和充足的阳光，生长期需要保持盆土湿润。' },
+  '栀子': { type: '喜湿', tmin: 15, tmax: 30, light: '散射光', noSun: true, reason: '栀子喜湿润和半阴，夏天怕强光直晒。' },
+  '发财树': { type: '中等', tmin: 15, tmax: 30, light: '散射光', noSun: true, reason: '发财树比较耐旱，表土干了再浇，怕积水。' }
+};
+function demoSpecies(name) {
+  return new Promise(resolve => setTimeout(() => {
+    const d = DEMO_SPECIES[name];
+    resolve(d ? Object.assign({ fixed: [] }, d) : { type: '中等', tmin: 15, tmax: 30, light: '散射光', noSun: false, fixed: [], reason: '演示模式：这是示例数据，不是真实查询结果。' });
+  }, 800));
+}

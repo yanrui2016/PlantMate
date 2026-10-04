@@ -93,3 +93,43 @@ async function testAI(apiKey, model) {
   const answer = await callZhipu(apiKey, model, [{ type: 'text', text: '请只回复两个字：连通' }]);
   return answer;
 }
+
+// ---------- AI 帮忙填写新品种的习性 ----------
+// 只问园艺上通用的说法（类型、温度、光照），植物系数和提醒线由我们的规则按类型换算
+function buildSpeciesPrompt(name) {
+  return '你是一位园艺专家。请根据常见的家庭养护经验，判断盆栽植物"' + name + '"的习性。每一项只能从给出的选项中选择，不要写其他文字。\n' +
+    '1. 类型（只能选一个）：喜湿＝需要保持土壤微湿，土稍干就要浇水；中等＝表层土干2到3厘米再浇水；耐旱＝等整盆土干透再浇水\n' +
+    '2. 最低温度：最低适宜温度，一个整数（℃）\n3. 最高温度：最高适宜温度，一个整数（℃）\n' +
+    '4. 光照需求（只能选一个）：' + LIGHT_NEEDS.join(' / ') + '\n5. 怕暴晒：是 / 否\n6. 依据：用一句话说明你的判断\n' +
+    '如果你不确定这是什么植物，"类型"填"不认识"。\n' +
+    '只输出一个JSON对象，例如：{"类型":"中等","最低温度":15,"最高温度":30,"光照需求":"散射光","怕暴晒":"是","依据":"……"}';
+}
+
+// 程序检查：不合格的项不采用，交给用户自己填
+function checkSpecies(text) {
+  const m = String(text || '').match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  let r;
+  try { r = JSON.parse(m[0]); } catch (e) { return null; }
+  if (r['类型'] === '不认识') return { unknown: true };
+  const out = { fixed: [] };
+  if (TYPE_DEFAULTS[r['类型']]) out.type = r['类型']; else out.fixed.push('类型');
+  const lo = Number(r['最低温度']), hi = Number(r['最高温度']);
+  if (isFinite(lo) && isFinite(hi) && lo >= -10 && hi <= 45 && lo < hi) { out.tmin = Math.round(lo); out.tmax = Math.round(hi); }
+  else out.fixed.push('适宜温度');
+  if (LIGHT_NEEDS.indexOf(r['光照需求']) >= 0) out.light = r['光照需求']; else out.fixed.push('光照需求');
+  if (r['怕暴晒'] === '是' || r['怕暴晒'] === '否') out.noSun = r['怕暴晒'] === '是'; else out.fixed.push('怕暴晒');
+  out.reason = typeof r['依据'] === 'string' ? r['依据'].slice(0, 80) : '';
+  return out;
+}
+
+async function suggestSpecies(name, settings) {
+  if (settings.demo) return demoSpecies(name);
+  if (!settings.apiKey) throw new Error('还没有填写智谱密钥，请到设置页填写');
+  for (let i = 0; i < 2; i++) {          // 回答格式不对时重试一次
+    const answer = await callZhipu(settings.apiKey, settings.model, [{ type: 'text', text: buildSpeciesPrompt(name) }]);
+    const r = checkSpecies(answer);
+    if (r) return r;
+  }
+  throw new Error('AI的回答格式不对，请自己填写');
+}

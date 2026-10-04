@@ -109,5 +109,50 @@ function makeThumb(src) {
 }
 
 function plantDesc(plant, p) {
-  return p.plants[plant.species].name + '，' + ENV_OPTIONS[plant.env] + '，' + p.soils[plant.soil].name;
+  return p.plants[plant.species].name + '，' + ENV_OPTIONS[plant.env] + (plant.env === 'indoor' && plant.heating === 'yes' ? '（冬季有暖气）' : '') + '，' + p.soils[plant.soil].name;
+}
+
+// 新品种表单（高级设置和添加植物页共用）。prefix 用来区分页面上的元素编号
+function speciesFormHtml(prefix, withName) {
+  const id = k => prefix + '-' + k;
+  return (withName ? '<div class="btn-row" style="align-items:center"><label for="' + id('name') + '" style="font-weight:700">名字</label>' +
+      '<input type="text" id="' + id('name') + '" maxlength="10" placeholder="比如 茉莉">' : '<div class="btn-row" style="align-items:center">') +
+    '<button type="button" class="btn" id="' + id('ai') + '">AI帮我填</button></div>' +
+    '<p class="tip" id="' + id('reason') + '" role="status"></p>' +
+    '<div class="btn-row" style="align-items:center;margin-top:10px">' +
+    '<label>类型 <select id="' + id('type') + '"><option>喜湿</option><option selected>中等</option><option>耐旱</option></select></label>' +
+    '<label>最低温度 ℃ <input type="number" id="' + id('tmin') + '" value="15"></label>' +
+    '<label>最高温度 ℃ <input type="number" id="' + id('tmax') + '" value="30"></label>' +
+    '<label>光照需求 <select id="' + id('light') + '">' + LIGHT_NEEDS.map(l => '<option>' + l + '</option>').join('') + '</select></label>' +
+    '<label><input type="checkbox" id="' + id('nosun') + '"> 怕暴晒</label></div>' +
+    '<p class="tip">植物系数和提醒线按类型自动换算：喜湿 1.2 / 50%，中等 1.0 / 40%，耐旱 0.6 / 15%。AI 的建议可能有错，请查资料核对。</p>';
+}
+
+function readSpeciesForm(prefix, name) {
+  const g = k => document.getElementById(prefix + '-' + k);
+  return { name: name, type: g('type').value, tmin: parseFloat(g('tmin').value), tmax: parseFloat(g('tmax').value),
+    light: g('light').value, noSun: g('nosun').checked, source: g('ai').dataset.used ? 'AI建议' : '自己填写' };
+}
+
+// 绑定“AI帮我填”按钮；getName 返回要查询的植物名称
+function bindSpeciesAI(prefix, getName) {
+  const g = k => document.getElementById(prefix + '-' + k);
+  g('ai').onclick = async () => {
+    const name = getName().trim();
+    if (!name) { g('reason').textContent = '请先填写植物名字。'; return; }
+    g('ai').disabled = true; g('ai').textContent = 'AI 正在想…';
+    try {
+      const r = await suggestSpecies(name, loadData().settings);
+      if (r.unknown) g('reason').textContent = 'AI 不认识“' + name + '”，请检查名字或自己填写。';
+      else {
+        if (r.type) g('type').value = r.type;
+        if (r.tmin != null) { g('tmin').value = r.tmin; g('tmax').value = r.tmax; }
+        if (r.light) g('light').value = r.light;
+        if (r.noSun != null) g('nosun').checked = r.noSun;
+        g('ai').dataset.used = '1';
+        g('reason').textContent = 'AI 的依据：' + (r.reason || '（没有说明）') + (r.fixed.length ? ' 以下几项请自己填：' + r.fixed.join('、') + '。' : '');
+      }
+    } catch (e) { g('reason').textContent = e.message; }
+    g('ai').disabled = false; g('ai').textContent = 'AI帮我填';
+  };
 }
