@@ -68,4 +68,8 @@ const OBS_ITEMS = [
 
 // 视觉大模型
 const AI_MODELS = { 'glm-4.6v-flash': 'GLM-4.6V-Flash（推荐）', 'glm-4v-flash': 'GLM-4V-Flash（备用）' };
-const AI_URL = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+// 智谱不允许网页直接调用接口（跨域限制），所以在本机用 start.py 启动时，请求先交给本地程序转发
+// 在线版：请求先发到阿里云上的中转站（部署方法见 relay/部署说明.md）。把下面换成你的中转站网址；留空就直接连智谱
+const AI_RELAY = 'https://plantmate-relay-csxttrtkps.cn-beijing.fcapp.run';
+const AI_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const AI_URL = AI_LOCAL ? '/zhipu' : (AI_RELAY || 'https://open.bigmodel.cn/api/paas/v4/chat/completions');
